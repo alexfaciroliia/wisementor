@@ -10,6 +10,7 @@ export default function CadastroPage() {
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -20,6 +21,12 @@ export default function CadastroPage() {
 
     if (password.length < 6) {
       setError('A senha deve ter pelo menos 6 caracteres.')
+      setLoading(false)
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem.')
       setLoading(false)
       return
     }
@@ -113,6 +120,20 @@ export default function CadastroPage() {
             autoComplete="new-password"
             minLength={6}
           />
+        </div>
+
+        <div className="form-field">
+          <label className="form-label" htmlFor="cadastro-confirm-password">Confirmar senha</label>
+          <input
+            id="cadastro-confirm-password"
+            type="password"
+            className="form-input"
+            placeholder="Repita a senha"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            autoComplete="new-password"
+          />
           <span className="form-hint">Use letras, números e símbolos para mais segurança.</span>
         </div>
 
@@ -145,3 +166,4 @@ export default function CadastroPage() {
     </div>
   )
 }
+
