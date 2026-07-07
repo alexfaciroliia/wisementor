@@ -25,18 +25,27 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Rotas públicas (não precisam de autenticação)
-  const publicRoutes = ['/login', '/cadastro', '/esqueci-senha', '/verificar-email', '/auth']
+  // Rotas públicas (não precisam de autenticação na camada de proxy)
+  const publicRoutes = ['/login', '/cadastro', '/esqueci-senha', '/verificar-email', '/auth', '/completar-cadastro']
   const { pathname } = request.nextUrl
-  const isPublic = publicRoutes.some((route) => pathname.startsWith(route))
+  const isPublic = pathname === '/' || publicRoutes.some((route) => pathname.startsWith(route))
 
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Se não estiver logado e tentar rota protegida -> Login
   if (!isPublic && !user) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
     return NextResponse.redirect(loginUrl)
   }
 
+  // Se já estiver logado e tentar acessar Login, Completar Cadastro ou Esqueci Senha -> Dashboard
+  if (user && (pathname === '/login' || pathname === '/esqueci-senha' || pathname === '/completar-cadastro')) {
+    const dashboardUrl = request.nextUrl.clone()
+    dashboardUrl.pathname = '/dashboard'
+    return NextResponse.redirect(dashboardUrl)
+  }
+
   return supabaseResponse
 }
+

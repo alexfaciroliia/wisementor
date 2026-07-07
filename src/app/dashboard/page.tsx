@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface Profile {
+  id: string
   full_name: string
   email: string
   role: 'master' | 'mentor' | 'mentee' | 'user'
+  created_at: string
 }
 
 interface Invitation {
@@ -22,6 +24,8 @@ export default function DashboardPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [allUsers, setAllUsers] = useState<Profile[]>([])
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invites' | 'users' | 'settings'>('dashboard')
   const [loading, setLoading] = useState(true)
 
   // Estados do formulario de convite
@@ -36,12 +40,11 @@ export default function DashboardPage() {
   const [editName, setEditName] = useState('')
   const [editPassword, setEditPassword] = useState('')
   const [editConfirmPassword, setEditConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState('')
   const [editSuccess, setEditSuccess] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-
 
   const supabase = createClient()
 
@@ -57,22 +60,27 @@ export default function DashboardPage() {
       // 2. Obter perfil do banco
       const { data: userProfile, error: profileError } = await supabase
         .from('profiles')
-        .select('full_name, email, role')
+        .select('id, full_name, email, role, created_at')
         .eq('id', user.id)
         .single()
 
+      let loadedProfile: Profile
       if (profileError || !userProfile) {
-        setProfile({
-          full_name: user.user_metadata?.full_name || 'Usuario',
+        loadedProfile = {
+          id: user.id,
+          full_name: user.user_metadata?.full_name || 'Usuário',
           email: user.email || '',
-          role: 'user'
-        })
+          role: 'user',
+          created_at: new Date().toISOString()
+        }
       } else {
-        setProfile(userProfile as Profile)
+        loadedProfile = userProfile as Profile
       }
+      setProfile(loadedProfile)
 
-      // 3. Obter convites se for 'master'
-      if (userProfile?.role === 'master') {
+      // 3. Obter dados adicionais do banco
+      if (loadedProfile.role === 'master') {
+        // Obter convites
         const { data: inviteList } = await supabase
           .from('invitations')
           .select('id, email, role, status, created_at')
@@ -80,6 +88,26 @@ export default function DashboardPage() {
 
         if (inviteList) {
           setInvitations(inviteList as Invitation[])
+        }
+
+        // Obter todos os usuários (perfis cadastrados)
+        const { data: usersList } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role, created_at')
+          .order('created_at', { ascending: false })
+
+        if (usersList) {
+          setAllUsers(usersList as Profile[])
+        }
+      } else {
+        // Usuários comuns (mentor/mentee) só podem ver a lista de perfis
+        const { data: usersList } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role, created_at')
+          .order('created_at', { ascending: false })
+
+        if (usersList) {
+          setAllUsers(usersList as Profile[])
         }
       }
 
@@ -209,117 +237,267 @@ export default function DashboardPage() {
     )
   }
 
+  // Abreviação de iniciais para avatar
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'U'
+
   return (
-    <div style={{ minHeight: '100vh', background: '#0d0f14', padding: '2rem' }}>
-      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-        {/* Header do Dashboard */}
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1.5rem' }}>
-          <div>
-            <h1 style={{ fontWeight: 700, fontSize: '1.75rem', letterSpacing: '-0.02em' }}>WiseMentor</h1>
-            <p style={{ color: '#8b8fa8', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-              Olá, <strong>{profile?.full_name}</strong> (papel: <em>{profile?.role}</em>)
-            </p>
+    <div className="app-container">
+      {/* Menu Lateral (Sidebar) */}
+      <aside className="sidebar">
+        {/* Perfil no Topo do Menu */}
+        <div className="sidebar-profile">
+          <div className="profile-info">
+            <div className="profile-avatar">{initials}</div>
+            <div className="profile-details">
+              <span className="profile-name" title={profile?.full_name}>{profile?.full_name}</span>
+              <span className="profile-role-badge">{profile?.role}</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button onClick={openProfileModal} className="btn-secondary" style={{ width: 'auto', padding: '0 1.25rem' }}>
+          <div className="profile-actions">
+            <button onClick={openProfileModal} className="profile-action-btn" title="Editar Perfil">
               ⚙️ Editar Perfil
             </button>
-            <button onClick={handleLogout} className="btn-primary" style={{ width: 'auto', padding: '0 1.25rem', marginTop: 0, background: 'rgba(255,255,255,0.05)', boxShadow: 'none', border: '1px solid rgba(255,255,255,0.1)' }}>
-              Sair da conta
+            <button onClick={handleLogout} className="profile-action-btn" title="Sair da Conta">
+              🚪 Sair
             </button>
           </div>
-        </header>
+        </div>
 
-        {profile?.role === 'master' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-            {/* Formulario de Novo Convite */}
-            <div className="auth-card" style={{ maxWidth: '100%', padding: '2rem', height: 'fit-content' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem' }}>Convidar Novo Usuário</h2>
-              
-              {inviteError && (
-                <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
-                  <span>⚠️</span>
-                  <span>{inviteError}</span>
-                </div>
-              )}
+        {/* Links do Menu */}
+        <nav className="sidebar-menu">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`menu-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+          >
+            📊 Dashboard
+          </button>
+          
+          {profile?.role === 'master' && (
+            <button
+              onClick={() => setActiveTab('invites')}
+              className={`menu-item ${activeTab === 'invites' ? 'active' : ''}`}
+            >
+              ✉️ Convites
+            </button>
+          )}
 
-              {inviteSuccess && (
-                <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
-                  <span>✅</span>
-                  <span>{inviteSuccess}</span>
-                </div>
-              )}
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`menu-item ${activeTab === 'users' ? 'active' : ''}`}
+          >
+            👥 Usuários
+          </button>
 
-              <form onSubmit={handleInvite} className="auth-form" noValidate>
-                <div className="form-field">
-                  <label className="form-label">E-mail do Convidado</label>
-                  <input
-                    type="email"
-                    className="form-input"
-                    placeholder="exemplo@email.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    required
-                  />
-                </div>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`menu-item ${activeTab === 'settings' ? 'active' : ''}`}
+          >
+            🛠️ Configurações
+          </button>
+        </nav>
+      </aside>
 
-                <div className="form-field">
-                  <label className="form-label">Nível de Acesso (Papel)</label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    className="form-input"
-                    style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
-                  >
-                    <option value="mentor">Mentor</option>
-                    <option value="mentee">Mentee (Mentorado)</option>
-                    <option value="user">Usuário Comum</option>
-                  </select>
-                </div>
-
-                <button type="submit" className="btn-primary" disabled={inviteLoading}>
-                  {inviteLoading ? <span className="spinner" /> : 'Enviar Convite por E-mail'}
-                </button>
-              </form>
+      {/* Conteúdo Principal (Direita) */}
+      <main className="main-content">
+        {/* Aba: Dashboard */}
+        {activeTab === 'dashboard' && (
+          <div>
+            <div className="content-header">
+              <h2 className="content-title">Dashboard</h2>
+              <p className="content-subtitle">Visão geral da plataforma WiseMentor</p>
             </div>
 
-            {/* Lista de Convites */}
-            <div className="auth-card" style={{ maxWidth: '100%', padding: '2rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem' }}>Lista de Convites</h2>
-              {invitations.length === 0 ? (
-                <p style={{ color: '#8b8fa8', fontSize: '0.9rem' }}>Nenhum convite enviado até o momento.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '400px', overflowY: 'auto' }}>
-                  {invitations.map((inv) => (
-                    <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
-                      <div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{inv.email}</div>
-                        <div style={{ fontSize: '0.78rem', color: '#8b8fa8', marginTop: '0.125rem' }}>
-                          Papel: <strong>{inv.role}</strong>
-                        </div>
-                      </div>
-                      <span className={`alert alert-${inv.status === 'accepted' ? 'success' : 'error'}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none' }}>
-                        {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="auth-card" style={{ maxWidth: '100%', padding: '2.5rem', marginBottom: '2rem' }}>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>
+                Olá, {profile?.full_name}! 🎓
+              </h3>
+              <p style={{ color: '#8b8fa8', lineHeight: 1.6, maxWidth: '700px' }}>
+                Seja bem-vindo à página principal do WiseMentor. Este painel foi inteiramente estruturado com uma navegação por menu lateral inteligente e design moderno. 
+                <br /><br />
+                A partir daqui você terá o controle completo sobre seus mentores, mentorados e configurações da plataforma.
+              </p>
             </div>
-          </div>
-        ) : (
-          /* Tela simples para Mentores e Mentees */
-          <div className="auth-card" style={{ maxWidth: '100%', textAlign: 'center', padding: '3rem 2rem' }}>
-            <div className="verify-icon">🌟</div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '1rem' }}>Área do {profile?.role === 'mentor' ? 'Mentor' : 'Mentorado'}</h2>
-            <p style={{ color: '#8b8fa8', maxWidth: '500px', margin: '0 auto', lineHeight: 1.6 }}>
-              Seja bem-vindo ao WiseMentor. O seu cadastro foi concluído com sucesso e você já está autenticado na plataforma.
-              <br /><br />
-              Estamos preparando a sua área de mentoria. Em breve você terá acesso a mais recursos aqui!
-            </p>
+
+            {profile?.role === 'master' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
+                <div className="auth-card" style={{ maxWidth: '100%', padding: '1.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👥</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{allUsers.length}</div>
+                  <div style={{ color: '#8b8fa8', fontSize: '0.875rem', marginTop: '0.25rem' }}>Usuários Ativos</div>
+                </div>
+                <div className="auth-card" style={{ maxWidth: '100%', padding: '1.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✉️</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                    {invitations.filter(i => i.status === 'pending').length}
+                  </div>
+                  <div style={{ color: '#8b8fa8', fontSize: '0.875rem', marginTop: '0.25rem' }}>Convites Pendentes</div>
+                </div>
+                <div className="auth-card" style={{ maxWidth: '100%', padding: '1.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✅</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                    {invitations.filter(i => i.status === 'accepted').length}
+                  </div>
+                  <div style={{ color: '#8b8fa8', fontSize: '0.875rem', marginTop: '0.25rem' }}>Convites Aceitos</div>
+                </div>
+              </div>
+            )}
           </div>
         )}
-      </div>
+
+        {/* Aba: Convites (Apenas Master) */}
+        {activeTab === 'invites' && profile?.role === 'master' && (
+          <div>
+            <div className="content-header">
+              <h2 className="content-title">Gestão de Convites</h2>
+              <p className="content-subtitle">Convide novos membros e gerencie acessos</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '2rem' }}>
+              {/* Formulario */}
+              <div className="auth-card" style={{ maxWidth: '100%', padding: '2rem', height: 'fit-content' }}>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1.5rem' }}>Convidar Usuário</h3>
+                
+                {inviteError && (
+                  <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                    <span>⚠️</span>
+                    <span>{inviteError}</span>
+                  </div>
+                )}
+
+                {inviteSuccess && (
+                  <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+                    <span>✅</span>
+                    <span>{inviteSuccess}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleInvite} className="auth-form" noValidate>
+                  <div className="form-field">
+                    <label className="form-label">E-mail do Convidado</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      placeholder="exemplo@email.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Nível de Acesso (Papel)</label>
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value)}
+                      className="form-input"
+                      style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
+                    >
+                      <option value="mentor">Mentor</option>
+                      <option value="mentee">Mentee (Mentorado)</option>
+                      <option value="user">Usuário Comum</option>
+                    </select>
+                  </div>
+
+                  <button type="submit" className="btn-primary" disabled={inviteLoading}>
+                    {inviteLoading ? <span className="spinner" /> : 'Enviar Convite'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Lista */}
+              <div className="auth-card" style={{ maxWidth: '100%', padding: '2rem' }}>
+                <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1.5rem' }}>Histórico de Convites</h3>
+                {invitations.length === 0 ? (
+                  <p style={{ color: '#8b8fa8', fontSize: '0.9rem' }}>Nenhum convite enviado até o momento.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                    {invitations.map((inv) => (
+                      <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{inv.email}</div>
+                          <div style={{ fontSize: '0.78rem', color: '#8b8fa8', marginTop: '0.125rem' }}>
+                            Papel: <strong>{inv.role}</strong>
+                          </div>
+                        </div>
+                        <span className={`alert alert-${inv.status === 'accepted' ? 'success' : 'error'}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none' }}>
+                          {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Aba: Usuários */}
+        {activeTab === 'users' && (
+          <div>
+            <div className="content-header">
+              <h2 className="content-title">Usuários Cadastrados</h2>
+              <p className="content-subtitle">Membros registrados na plataforma</p>
+            </div>
+
+            <div className="user-table-card">
+              <table className="user-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Acesso</th>
+                    <th>Data de Cadastro</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allUsers.map((u) => (
+                    <tr key={u.id}>
+                      <td style={{ fontWeight: 600 }}>{u.full_name || 'Usuário Sem Nome'}</td>
+                      <td>{u.email}</td>
+                      <td>
+                        <span className="profile-role-badge" style={{ display: 'inline-block' }}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td style={{ color: '#8b8fa8' }}>
+                        {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Aba: Configurações */}
+        {activeTab === 'settings' && (
+          <div>
+            <div className="content-header">
+              <h2 className="content-title">Configurações</h2>
+              <p className="content-subtitle">Ajustes gerais do sistema WiseMentor</p>
+            </div>
+
+            <div className="auth-card" style={{ maxWidth: '100%', padding: '2.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                <div>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Gerais</h4>
+                  <p style={{ color: '#8b8fa8', fontSize: '0.875rem' }}>Ajustes e dados gerais da plataforma de mentoria.</p>
+                </div>
+                
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
+                
+                <div>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Políticas de Convites</h4>
+                  <p style={{ color: '#8b8fa8', fontSize: '0.875rem', marginBottom: '1rem' }}>Atualmente configurado como privado (Apenas Master pode convidar).</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
 
       {/* Modal de Editar Perfil */}
       {isProfileModalOpen && (
@@ -421,7 +599,6 @@ export default function DashboardPage() {
                 </div>
               )}
 
-
               <div className="modal-actions">
                 <button
                   type="button"
@@ -447,4 +624,3 @@ export default function DashboardPage() {
     </div>
   )
 }
-
