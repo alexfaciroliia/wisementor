@@ -202,6 +202,12 @@ input, textarea {
   outline: none;
 }
 
+select.form-input option {
+  background-color: #12131a;
+  color: var(--text-primary);
+}
+
+
 .form-input::placeholder {
   color: var(--text-muted);
 }
