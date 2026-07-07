@@ -79,9 +79,13 @@ export default function DashboardPage() {
           created_at: new Date().toISOString()
         }
       } else {
-        loadedProfile = userProfile as Profile
+        loadedProfile = {
+          ...(userProfile as Profile),
+          email: user.email || (userProfile as Profile).email // Prioriza o e-mail da sessão ativa do Auth
+        }
       }
       setProfile(loadedProfile)
+
 
       // 3. Obter dados adicionais do banco
       if (loadedProfile.role === 'administrador') {
