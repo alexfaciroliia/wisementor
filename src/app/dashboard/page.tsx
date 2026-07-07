@@ -8,7 +8,8 @@ interface Profile {
   id: string
   full_name: string
   email: string
-  role: 'master' | 'mentor' | 'mentee' | 'user'
+  role: 'administrador' | 'operador'
+  avatar_url: string
   created_at: string
 }
 
@@ -30,7 +31,7 @@ export default function DashboardPage() {
 
   // Estados do formulario de convite
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('mentor')
+  const [inviteRole, setInviteRole] = useState('operador')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState('')
@@ -42,11 +43,14 @@ export default function DashboardPage() {
   const [editConfirmPassword, setEditConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState('')
   const [editLoading, setEditLoading] = useState(false)
   const [editError, setEditError] = useState('')
   const [editSuccess, setEditSuccess] = useState('')
 
   const supabase = createClient()
+
 
   useEffect(() => {
     async function loadData() {
@@ -60,7 +64,7 @@ export default function DashboardPage() {
       // 2. Obter perfil do banco
       const { data: userProfile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role, created_at')
+        .select('id, full_name, email, role, avatar_url, created_at')
         .eq('id', user.id)
         .single()
 
@@ -70,7 +74,8 @@ export default function DashboardPage() {
           id: user.id,
           full_name: user.user_metadata?.full_name || 'Usuário',
           email: user.email || '',
-          role: 'user',
+          role: 'operador',
+          avatar_url: user.user_metadata?.avatar_url || '',
           created_at: new Date().toISOString()
         }
       } else {
@@ -79,7 +84,7 @@ export default function DashboardPage() {
       setProfile(loadedProfile)
 
       // 3. Obter dados adicionais do banco
-      if (loadedProfile.role === 'master') {
+      if (loadedProfile.role === 'administrador') {
         // Obter convites
         const { data: inviteList } = await supabase
           .from('invitations')
@@ -93,22 +98,23 @@ export default function DashboardPage() {
         // Obter todos os usuários (perfis cadastrados)
         const { data: usersList } = await supabase
           .from('profiles')
-          .select('id, full_name, email, role, created_at')
+          .select('id, full_name, email, role, avatar_url, created_at')
           .order('created_at', { ascending: false })
 
         if (usersList) {
           setAllUsers(usersList as Profile[])
         }
       } else {
-        // Usuários comuns (mentor/mentee) só podem ver a lista de perfis
+        // Usuários comuns só podem ver a lista de perfis
         const { data: usersList } = await supabase
           .from('profiles')
-          .select('id, full_name, email, role, created_at')
+          .select('id, full_name, email, role, avatar_url, created_at')
           .order('created_at', { ascending: false })
 
         if (usersList) {
           setAllUsers(usersList as Profile[])
         }
+
       }
 
       setLoading(false)
@@ -156,6 +162,8 @@ export default function DashboardPage() {
     setEditName(profile?.full_name || '')
     setEditPassword('')
     setEditConfirmPassword('')
+    setAvatarFile(null)
+    setAvatarPreview(profile?.avatar_url || '')
     setEditError('')
     setEditSuccess('')
     setIsProfileModalOpen(true)
@@ -177,6 +185,39 @@ export default function DashboardPage() {
       data: { full_name: editName }
     }
 
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setEditError('Sessão expirada. Faça login novamente.')
+      setEditLoading(false)
+      return
+    }
+
+    // 1. Upload do Avatar se houver novo arquivo selecionado
+    let newAvatarUrl = profile?.avatar_url || ''
+    if (avatarFile) {
+      const fileExt = avatarFile.name.split('.').pop()
+      const fileName = `${user.id}/avatar-${Date.now()}.${fileExt}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, avatarFile, { upsert: true })
+
+      if (uploadError) {
+        setEditError(`Erro no envio da imagem: ${uploadError.message}`)
+        setEditLoading(false)
+        return
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName)
+
+      newAvatarUrl = publicUrl
+      updates.data.avatar_url = publicUrl
+    }
+
     if (editPassword) {
       if (editPassword.length < 6) {
         setEditError('A nova senha deve ter pelo menos 6 caracteres.')
@@ -191,8 +232,8 @@ export default function DashboardPage() {
       updates.password = editPassword
     }
 
-    // 1. Atualizar no Auth do Supabase
-    const { data: { user }, error: authError } = await supabase.auth.updateUser(updates)
+    // 2. Atualizar no Auth do Supabase
+    const { error: authError } = await supabase.auth.updateUser(updates)
 
     if (authError) {
       setEditError(authError.message)
@@ -200,25 +241,26 @@ export default function DashboardPage() {
       return
     }
 
-    if (user) {
-      // 2. Atualizar tabela de perfis
-      const { error: dbError } = await supabase
-        .from('profiles')
-        .update({ full_name: editName })
-        .eq('id', user.id)
+    // 3. Atualizar tabela de perfis
+    const { error: dbError } = await supabase
+      .from('profiles')
+      .update({ 
+        full_name: editName,
+        avatar_url: newAvatarUrl
+      })
+      .eq('id', user.id)
 
-      if (dbError) {
-        setEditError('Erro ao salvar nome no banco de dados.')
-        setEditLoading(false)
-        return
-      }
-
-      setProfile(prev => prev ? { ...prev, full_name: editName } : null)
-      setEditSuccess('Perfil atualizado com sucesso!')
-      setTimeout(() => {
-        setIsProfileModalOpen(false)
-      }, 1500)
+    if (dbError) {
+      setEditError('Erro ao salvar informações no banco de dados.')
+      setEditLoading(false)
+      return
     }
+
+    setProfile(prev => prev ? { ...prev, full_name: editName, avatar_url: newAvatarUrl } : null)
+    setEditSuccess('Perfil atualizado com sucesso!')
+    setTimeout(() => {
+      setIsProfileModalOpen(false)
+    }, 1500)
 
     setEditLoading(false)
   }
@@ -249,15 +291,27 @@ export default function DashboardPage() {
         {/* Perfil no Topo do Menu */}
         <div className="sidebar-profile">
           <div className="profile-info">
-            <div className="profile-avatar">{initials}</div>
+            {profile?.avatar_url ? (
+              <img 
+                src={profile.avatar_url} 
+                alt="Avatar" 
+                className="profile-avatar" 
+                style={{ objectFit: 'cover' }} 
+              />
+            ) : (
+              <div className="profile-avatar">{initials}</div>
+            )}
             <div className="profile-details">
               <span className="profile-name" title={profile?.full_name}>{profile?.full_name}</span>
-              <span className="profile-role-badge">{profile?.role}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }} title={profile?.email}>
+                {profile?.email}
+              </span>
+              <span className="profile-role-badge" style={{ marginTop: '0.25rem' }}>{profile?.role}</span>
             </div>
           </div>
           <div className="profile-actions">
             <button onClick={openProfileModal} className="profile-action-btn" title="Editar Perfil">
-              ⚙️ Editar Perfil
+              ⚙️ Editar
             </button>
             <button onClick={handleLogout} className="profile-action-btn" title="Sair da Conta">
               🚪 Sair
@@ -274,7 +328,7 @@ export default function DashboardPage() {
             📊 Dashboard
           </button>
           
-          {profile?.role === 'master' && (
+          {profile?.role === 'administrador' && (
             <button
               onClick={() => setActiveTab('invites')}
               className={`menu-item ${activeTab === 'invites' ? 'active' : ''}`}
@@ -316,11 +370,11 @@ export default function DashboardPage() {
               <p style={{ color: '#8b8fa8', lineHeight: 1.6, maxWidth: '700px' }}>
                 Seja bem-vindo à página principal do WiseMentor. Este painel foi inteiramente estruturado com uma navegação por menu lateral inteligente e design moderno. 
                 <br /><br />
-                A partir daqui você terá o controle completo sobre seus mentores, mentorados e configurações da plataforma.
+                A partir daqui você terá o controle completo sobre seus usuários e configurações da plataforma.
               </p>
             </div>
 
-            {profile?.role === 'master' && (
+            {profile?.role === 'administrador' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
                 <div className="auth-card" style={{ maxWidth: '100%', padding: '1.5rem', textAlign: 'center' }}>
                   <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👥</div>
@@ -346,8 +400,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Aba: Convites (Apenas Master) */}
-        {activeTab === 'invites' && profile?.role === 'master' && (
+
+        {/* Aba: Convites (Apenas Administrador) */}
+        {activeTab === 'invites' && profile?.role === 'administrador' && (
           <div>
             <div className="content-header">
               <h2 className="content-title">Gestão de Convites</h2>
@@ -394,9 +449,8 @@ export default function DashboardPage() {
                       className="form-input"
                       style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
                     >
-                      <option value="mentor">Mentor</option>
-                      <option value="mentee">Mentee (Mentorado)</option>
-                      <option value="user">Usuário Comum</option>
+                      <option value="operador">Operador</option>
+                      <option value="administrador">Administrador</option>
                     </select>
                   </div>
 
@@ -452,25 +506,44 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allUsers.map((u) => (
-                    <tr key={u.id}>
-                      <td style={{ fontWeight: 600 }}>{u.full_name || 'Usuário Sem Nome'}</td>
-                      <td>{u.email}</td>
-                      <td>
-                        <span className="profile-role-badge" style={{ display: 'inline-block' }}>
-                          {u.role}
-                        </span>
-                      </td>
-                      <td style={{ color: '#8b8fa8' }}>
-                        {new Date(u.created_at).toLocaleDateString('pt-BR')}
-                      </td>
-                    </tr>
-                  ))}
+                  {allUsers.map((u) => {
+                    const uInitials = u.full_name
+                      ? u.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+                      : 'U';
+                    return (
+                      <tr key={u.id}>
+                        <td style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600 }}>
+                          {u.avatar_url ? (
+                            <img 
+                              src={u.avatar_url} 
+                              alt="Avatar" 
+                              style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} 
+                            />
+                          ) : (
+                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.15))', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
+                              {uInitials}
+                            </div>
+                          )}
+                          {u.full_name || 'Usuário Sem Nome'}
+                        </td>
+                        <td>{u.email}</td>
+                        <td>
+                          <span className="profile-role-badge" style={{ display: 'inline-block' }}>
+                            {u.role}
+                          </span>
+                        </td>
+                        <td style={{ color: '#8b8fa8' }}>
+                          {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
+
 
         {/* Aba: Configurações */}
         {activeTab === 'settings' && (
@@ -525,6 +598,43 @@ export default function DashboardPage() {
             )}
 
             <form onSubmit={handleUpdateProfile} className="auth-form" noValidate>
+              {/* Foto de Perfil (Avatar) */}
+              <div className="form-field" style={{ alignItems: 'center', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                  {avatarPreview ? (
+                    <img 
+                      src={avatarPreview} 
+                      alt="Preview" 
+                      style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--accent)' }} 
+                    />
+                  ) : (
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.15))', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 700 }}>
+                      {initials}
+                    </div>
+                  )}
+                  <label 
+                    htmlFor="avatar-upload" 
+                    className="btn-secondary" 
+                    style={{ width: 'auto', height: '2rem', padding: '0 0.875rem', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+                  >
+                    📷 Escolher Foto
+                  </label>
+                  <input 
+                    id="avatar-upload"
+                    type="file" 
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setAvatarFile(file);
+                        setAvatarPreview(URL.createObjectURL(file));
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
               <div className="form-field">
                 <label className="form-label">Nome Completo</label>
                 <input
@@ -535,6 +645,7 @@ export default function DashboardPage() {
                   required
                 />
               </div>
+
 
               <div className="form-field">
                 <label className="form-label">Nova Senha (deixe em branco para manter)</label>

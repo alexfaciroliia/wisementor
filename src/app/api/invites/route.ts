@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       }
     )
 
-    // Validar se o usuário atual está autenticado e é um 'master'
+    // Validar se o usuário atual está autenticado e é um 'administrador'
     const { data: { user } } = await userClient.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
@@ -35,9 +35,10 @@ export async function POST(request: Request) {
       .eq('id', user.id)
       .single()
 
-    if (!profile || profile.role !== 'master') {
-      return NextResponse.json({ error: 'Apenas administradores Master podem convidar.' }, { status: 403 })
+    if (!profile || profile.role !== 'administrador') {
+      return NextResponse.json({ error: 'Apenas administradores podem convidar.' }, { status: 403 })
     }
+
 
     // 2. Criar cliente com SERVICE_ROLE para realizar ações administrativas
     const adminClient = createServerClient(
