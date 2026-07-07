@@ -49,7 +49,7 @@ export default function LoginPage() {
 
       {/* Cabeçalho */}
       <div className="auth-header">
-        <h1 className="auth-title">Bem-vindo de volta</h1>
+        <h1 className="auth-title">Bem-vindo!</h1>
         <p className="auth-subtitle">Entre na sua conta para continuar</p>
       </div>
 
@@ -113,16 +113,6 @@ export default function LoginPage() {
           )}
         </button>
       </form>
-
-      {/* Rodapé */}
-      <div className="auth-footer">
-        <span>
-          Não tem uma conta?{' '}
-          <Link href="/cadastro" className="auth-link">
-            Criar conta
-          </Link>
-        </span>
-      </div>
     </div>
   )
 }
