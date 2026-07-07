@@ -449,3 +449,34 @@ input, textarea {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* ── Revelar Senha ── */
+.password-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.password-toggle-btn:hover {
+  color: var(--text-primary);
+}
+
+.form-input-password {
+  padding-right: 2.75rem !important;
+}
+
+
