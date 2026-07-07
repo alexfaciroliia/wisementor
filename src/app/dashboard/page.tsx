@@ -50,7 +50,17 @@ export default function DashboardPage() {
   const [editError, setEditError] = useState('')
   const [editSuccess, setEditSuccess] = useState('')
 
+  // Estados do modal de editar convite
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [editInviteId, setEditInviteId] = useState('')
+  const [editInviteEmail, setEditInviteEmail] = useState('')
+  const [editInviteRole, setEditInviteRole] = useState('')
+  const [editInviteLoading, setEditInviteLoading] = useState(false)
+  const [editInviteError, setEditInviteError] = useState('')
+  const [editInviteSuccess, setEditInviteSuccess] = useState('')
+
   const supabase = createClient()
+
 
 
   useEffect(() => {
@@ -292,6 +302,98 @@ export default function DashboardPage() {
     setEditLoading(false)
   }
 
+  async function handleDeleteInvite(id: string) {
+    if (!window.confirm('Deseja realmente anular e excluir este convite? O link enviado no e-mail não funcionará mais.')) {
+      return
+    }
+
+    const response = await fetch(`/api/invites/${id}`, {
+      method: 'DELETE'
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      alert(data.error || 'Erro ao excluir convite.')
+      return
+    }
+
+    // Recarregar convites
+    if (profile?.role === 'sistema') {
+      const { data: inviteList } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, created_at')
+        .order('created_at', { ascending: false })
+
+      if (inviteList) setInvitations(inviteList as Invitation[])
+    } else if (profile?.role === 'administrador') {
+      const { data: inviteList } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, created_at')
+        .neq('role', 'sistema')
+        .order('created_at', { ascending: false })
+
+      if (inviteList) setInvitations(inviteList as Invitation[])
+    }
+  }
+
+  function openEditInviteModal(inv: Invitation) {
+    setEditInviteId(inv.id)
+    setEditInviteEmail(inv.email)
+    setEditInviteRole(inv.role)
+    setEditInviteError('')
+    setEditInviteSuccess('')
+    setIsInviteModalOpen(true)
+  }
+
+  async function handleUpdateInvite(e: React.FormEvent) {
+    e.preventDefault()
+    setEditInviteLoading(true)
+    setEditInviteError('')
+    setEditInviteSuccess('')
+
+    const response = await fetch(`/api/invites/${editInviteId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: editInviteEmail, role: editInviteRole })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      setEditInviteError(data.error || 'Erro ao atualizar e reenviar convite.')
+      setEditInviteLoading(false)
+      return
+    }
+
+    setEditInviteSuccess('Convite atualizado e enviado com sucesso!')
+    
+    // Recarregar convites
+    if (profile?.role === 'sistema') {
+      const { data: inviteList } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, created_at')
+        .order('created_at', { ascending: false })
+
+      if (inviteList) setInvitations(inviteList as Invitation[])
+    } else if (profile?.role === 'administrador') {
+      const { data: inviteList } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, created_at')
+        .neq('role', 'sistema')
+        .order('created_at', { ascending: false })
+
+      if (inviteList) setInvitations(inviteList as Invitation[])
+    }
+
+    setTimeout(() => {
+      setIsInviteModalOpen(false)
+    }, 1500)
+
+    setEditInviteLoading(false)
+  }
+
+
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
@@ -510,14 +612,37 @@ export default function DashboardPage() {
                             Papel: <strong>{inv.role}</strong>
                           </div>
                         </div>
-                        <span className={`alert alert-${inv.status === 'accepted' ? 'success' : 'error'}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none' }}>
-                          {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          {inv.status === 'pending' && (
+                            <div style={{ display: 'flex', gap: '0.375rem' }}>
+                              <button 
+                                onClick={() => openEditInviteModal(inv)}
+                                className="profile-action-btn"
+                                style={{ width: '2rem', height: '2rem', padding: 0 }}
+                                title="Editar e Reenviar"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteInvite(inv.id)}
+                                className="profile-action-btn"
+                                style={{ width: '2rem', height: '2rem', padding: 0, borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
+                                title="Anular e Excluir"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
+                          <span className={`alert alert-${inv.status === 'accepted' ? 'success' : 'error'}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none', margin: 0 }}>
+                            {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
+
             </div>
           </div>
         )}
@@ -767,6 +892,83 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Editar Convite */}
+      {isInviteModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header">
+              <h3 className="modal-title">Editar e Reenviar Convite</h3>
+              <button onClick={() => setIsInviteModalOpen(false)} className="modal-close">
+                &times;
+              </button>
+            </div>
+
+            {editInviteError && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                <span>⚠️</span>
+                <span>{editInviteError}</span>
+              </div>
+            )}
+
+            {editInviteSuccess && (
+              <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+                <span>✅</span>
+                <span>{editInviteSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateInvite} className="auth-form" noValidate>
+              <div className="form-field">
+                <label className="form-label">E-mail do Convidado</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={editInviteEmail}
+                  onChange={(e) => setEditInviteEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">Nível de Acesso (Papel)</label>
+                <select
+                  value={editInviteRole}
+                  onChange={(e) => setEditInviteRole(e.target.value)}
+                  className="form-input"
+                  style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
+                >
+                  <option value="administrador">Administrador</option>
+                  <option value="operador">Operador</option>
+                  {profile?.role === 'sistema' && (
+                    <option value="sistema">Sistema</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => setIsInviteModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={editInviteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ marginTop: 0 }}
+                  disabled={editInviteLoading}
+                >
+                  {editInviteLoading ? <span className="spinner" /> : 'Salvar e Reenviar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
