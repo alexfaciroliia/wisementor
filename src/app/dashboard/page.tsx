@@ -479,13 +479,14 @@ export default function DashboardPage() {
                       className="form-input"
                       style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
                     >
-                      <option value="operador">Operador</option>
                       <option value="administrador">Administrador</option>
+                      <option value="operador">Operador</option>
                       {profile?.role === 'sistema' && (
                         <option value="sistema">Sistema</option>
                       )}
                     </select>
                   </div>
+
 
                   <button type="submit" className="btn-primary" disabled={inviteLoading}>
                     {inviteLoading ? <span className="spinner" /> : 'Enviar Convite'}
