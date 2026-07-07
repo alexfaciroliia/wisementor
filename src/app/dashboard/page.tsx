@@ -31,6 +31,15 @@ export default function DashboardPage() {
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState('')
 
+  // Estados do modal de editar perfil
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editPassword, setEditPassword] = useState('')
+  const [editConfirmPassword, setEditConfirmPassword] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [editSuccess, setEditSuccess] = useState('')
+
   const supabase = createClient()
 
   useEffect(() => {
@@ -112,6 +121,77 @@ export default function DashboardPage() {
     }
   }
 
+  function openProfileModal() {
+    setEditName(profile?.full_name || '')
+    setEditPassword('')
+    setEditConfirmPassword('')
+    setEditError('')
+    setEditSuccess('')
+    setIsProfileModalOpen(true)
+  }
+
+  async function handleUpdateProfile(e: React.FormEvent) {
+    e.preventDefault()
+    setEditLoading(true)
+    setEditError('')
+    setEditSuccess('')
+
+    if (!editName.trim()) {
+      setEditError('Por favor, digite seu nome.')
+      setEditLoading(false)
+      return
+    }
+
+    const updates: any = {
+      data: { full_name: editName }
+    }
+
+    if (editPassword) {
+      if (editPassword.length < 6) {
+        setEditError('A nova senha deve ter pelo menos 6 caracteres.')
+        setEditLoading(false)
+        return
+      }
+      if (editPassword !== editConfirmPassword) {
+        setEditError('As senhas não coincidem.')
+        setEditLoading(false)
+        return
+      }
+      updates.password = editPassword
+    }
+
+    // 1. Atualizar no Auth do Supabase
+    const { data: { user }, error: authError } = await supabase.auth.updateUser(updates)
+
+    if (authError) {
+      setEditError(authError.message)
+      setEditLoading(false)
+      return
+    }
+
+    if (user) {
+      // 2. Atualizar tabela de perfis
+      const { error: dbError } = await supabase
+        .from('profiles')
+        .update({ full_name: editName })
+        .eq('id', user.id)
+
+      if (dbError) {
+        setEditError('Erro ao salvar nome no banco de dados.')
+        setEditLoading(false)
+        return
+      }
+
+      setProfile(prev => prev ? { ...prev, full_name: editName } : null)
+      setEditSuccess('Perfil atualizado com sucesso!')
+      setTimeout(() => {
+        setIsProfileModalOpen(false)
+      }, 1500)
+    }
+
+    setEditLoading(false)
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut()
     router.push('/login')
@@ -137,9 +217,14 @@ export default function DashboardPage() {
               Olá, <strong>{profile?.full_name}</strong> (papel: <em>{profile?.role}</em>)
             </p>
           </div>
-          <button onClick={handleLogout} className="btn-primary" style={{ width: 'auto', padding: '0 1.25rem', marginTop: 0, background: 'rgba(255,255,255,0.05)', boxShadow: 'none', border: '1px solid rgba(255,255,255,0.1)' }}>
-            Sair da conta
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={openProfileModal} className="btn-secondary" style={{ width: 'auto', padding: '0 1.25rem' }}>
+              ⚙️ Editar Perfil
+            </button>
+            <button onClick={handleLogout} className="btn-primary" style={{ width: 'auto', padding: '0 1.25rem', marginTop: 0, background: 'rgba(255,255,255,0.05)', boxShadow: 'none', border: '1px solid rgba(255,255,255,0.1)' }}>
+              Sair da conta
+            </button>
+          </div>
         </header>
 
         {profile?.role === 'master' ? (
@@ -232,6 +317,92 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Modal de Editar Perfil */}
+      {isProfileModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header">
+              <h3 className="modal-title">Editar Perfil</h3>
+              <button onClick={() => setIsProfileModalOpen(false)} className="modal-close">
+                &times;
+              </button>
+            </div>
+
+            {editError && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                <span>⚠️</span>
+                <span>{editError}</span>
+              </div>
+            )}
+
+            {editSuccess && (
+              <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+                <span>✅</span>
+                <span>{editSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateProfile} className="auth-form" noValidate>
+              <div className="form-field">
+                <label className="form-label">Nome Completo</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">Nova Senha (deixe em branco para manter)</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="••••••••"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                />
+              </div>
+
+              {editPassword && (
+                <div className="form-field">
+                  <label className="form-label">Confirmar Nova Senha</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="••••••••"
+                    value={editConfirmPassword}
+                    onChange={(e) => setEditConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={editLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ marginTop: 0 }}
+                  disabled={editLoading}
+                >
+                  {editLoading ? <span className="spinner" /> : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
