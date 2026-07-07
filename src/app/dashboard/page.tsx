@@ -59,6 +59,11 @@ export default function DashboardPage() {
   const [editInviteError, setEditInviteError] = useState('')
   const [editInviteSuccess, setEditInviteSuccess] = useState('')
 
+  // Estados do modal de confirmação moderna
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [inviteIdToDelete, setInviteIdToDelete] = useState<string | null>(null)
+
+
   const supabase = createClient()
 
 
@@ -302,12 +307,15 @@ export default function DashboardPage() {
     setEditLoading(false)
   }
 
-  async function handleDeleteInvite(id: string) {
-    if (!window.confirm('Deseja realmente anular e excluir este convite? O link enviado no e-mail não funcionará mais.')) {
-      return
-    }
+  function handleDeleteInvite(id: string) {
+    setInviteIdToDelete(id)
+    setIsConfirmModalOpen(true)
+  }
 
-    const response = await fetch(`/api/invites/${id}`, {
+  async function confirmDeleteInvite() {
+    if (!inviteIdToDelete) return
+
+    const response = await fetch(`/api/invites/${inviteIdToDelete}`, {
       method: 'DELETE'
     })
 
@@ -315,6 +323,8 @@ export default function DashboardPage() {
 
     if (!response.ok) {
       alert(data.error || 'Erro ao excluir convite.')
+      setIsConfirmModalOpen(false)
+      setInviteIdToDelete(null)
       return
     }
 
@@ -335,7 +345,11 @@ export default function DashboardPage() {
 
       if (inviteList) setInvitations(inviteList as Invitation[])
     }
+
+    setIsConfirmModalOpen(false)
+    setInviteIdToDelete(null)
   }
+
 
   function openEditInviteModal(inv: Invitation) {
     setEditInviteId(inv.id)
@@ -968,7 +982,42 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Confirmação Moderna */}
+      {isConfirmModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '400px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>⚠️</div>
+            <h3 className="modal-title" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
+              Anular e Excluir Convite
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.5', marginBottom: '1.75rem' }}>
+              Deseja realmente anular e excluir este convite? O link enviado no e-mail não funcionará mais.
+            </p>
+            <div className="modal-actions" style={{ justifyContent: 'center', gap: '0.75rem' }}>
+              <button
+                onClick={() => {
+                  setIsConfirmModalOpen(false)
+                  setInviteIdToDelete(null)
+                }}
+                className="btn-secondary"
+                style={{ width: 'auto', padding: '0 1.5rem' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteInvite}
+                className="btn-primary"
+                style={{ width: 'auto', padding: '0 1.5rem', marginTop: 0, background: '#ef4444', boxShadow: '0 4px 20px rgba(239, 68, 68, 0.35)' }}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
 
