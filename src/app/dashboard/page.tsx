@@ -8,10 +8,11 @@ interface Profile {
   id: string
   full_name: string
   email: string
-  role: 'administrador' | 'operador'
+  role: 'sistema' | 'administrador' | 'operador'
   avatar_url: string
   created_at: string
 }
+
 
 interface Invitation {
   id: string
@@ -88,8 +89,8 @@ export default function DashboardPage() {
 
 
       // 3. Obter dados adicionais do banco
-      if (loadedProfile.role === 'administrador') {
-        // Obter convites
+      if (loadedProfile.role === 'sistema') {
+        // Sistema vê todos os convites e todos os usuários
         const { data: inviteList } = await supabase
           .from('invitations')
           .select('id, email, role, status, created_at')
@@ -99,26 +100,39 @@ export default function DashboardPage() {
           setInvitations(inviteList as Invitation[])
         }
 
-        // Obter todos os usuários (perfis cadastrados)
         const { data: usersList } = await supabase
           .from('profiles')
           .select('id, full_name, email, role, avatar_url, created_at')
+          .order('created_at', { ascending: false })
+
+        if (usersList) {
+          setAllUsers(usersList as Profile[])
+        }
+      } else if (loadedProfile.role === 'administrador') {
+        // Administrador vê convites e usuários, EXCETO nível 'sistema'
+        const { data: inviteList } = await supabase
+          .from('invitations')
+          .select('id, email, role, status, created_at')
+          .neq('role', 'sistema')
+          .order('created_at', { ascending: false })
+
+        if (inviteList) {
+          setInvitations(inviteList as Invitation[])
+        }
+
+        const { data: usersList } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role, avatar_url, created_at')
+          .neq('role', 'sistema')
           .order('created_at', { ascending: false })
 
         if (usersList) {
           setAllUsers(usersList as Profile[])
         }
       } else {
-        // Usuários comuns só podem ver a lista de perfis
-        const { data: usersList } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, role, avatar_url, created_at')
-          .order('created_at', { ascending: false })
-
-        if (usersList) {
-          setAllUsers(usersList as Profile[])
-        }
-
+        // Operador não tem acesso a gerenciar usuários nem convites
+        setInvitations([])
+        setAllUsers([])
       }
 
       setLoading(false)
@@ -151,16 +165,25 @@ export default function DashboardPage() {
     setInviteEmail('')
     setInviteLoading(false)
 
-    // Recarregar lista de convites
-    const { data: inviteList } = await supabase
-      .from('invitations')
-      .select('id, email, role, status, created_at')
-      .order('created_at', { ascending: false })
+    // Recarregar lista de convites dependendo do papel
+    if (profile?.role === 'sistema') {
+      const { data: inviteList } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, created_at')
+        .order('created_at', { ascending: false })
 
-    if (inviteList) {
-      setInvitations(inviteList as Invitation[])
+      if (inviteList) setInvitations(inviteList as Invitation[])
+    } else if (profile?.role === 'administrador') {
+      const { data: inviteList } = await supabase
+        .from('invitations')
+        .select('id, email, role, status, created_at')
+        .neq('role', 'sistema')
+        .order('created_at', { ascending: false })
+
+      if (inviteList) setInvitations(inviteList as Invitation[])
     }
   }
+
 
   function openProfileModal() {
     setEditName(profile?.full_name || '')
@@ -332,7 +355,7 @@ export default function DashboardPage() {
             📊 Dashboard
           </button>
           
-          {profile?.role === 'administrador' && (
+          {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
             <button
               onClick={() => setActiveTab('invites')}
               className={`menu-item ${activeTab === 'invites' ? 'active' : ''}`}
@@ -341,12 +364,14 @@ export default function DashboardPage() {
             </button>
           )}
 
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`menu-item ${activeTab === 'users' ? 'active' : ''}`}
-          >
-            👥 Usuários
-          </button>
+          {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`menu-item ${activeTab === 'users' ? 'active' : ''}`}
+            >
+              👥 Usuários
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('settings')}
@@ -378,7 +403,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            {profile?.role === 'administrador' && (
+            {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
                 <div className="auth-card" style={{ maxWidth: '100%', padding: '1.5rem', textAlign: 'center' }}>
                   <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👥</div>
@@ -405,8 +430,9 @@ export default function DashboardPage() {
         )}
 
 
-        {/* Aba: Convites (Apenas Administrador) */}
-        {activeTab === 'invites' && profile?.role === 'administrador' && (
+
+        {/* Aba: Convites (Apenas Administrador e Sistema) */}
+        {activeTab === 'invites' && (profile?.role === 'sistema' || profile?.role === 'administrador') && (
           <div>
             <div className="content-header">
               <h2 className="content-title">Gestão de Convites</h2>
@@ -455,6 +481,9 @@ export default function DashboardPage() {
                     >
                       <option value="operador">Operador</option>
                       <option value="administrador">Administrador</option>
+                      {profile?.role === 'sistema' && (
+                        <option value="sistema">Sistema</option>
+                      )}
                     </select>
                   </div>
 
@@ -463,6 +492,7 @@ export default function DashboardPage() {
                   </button>
                 </form>
               </div>
+
 
               {/* Lista */}
               <div className="auth-card" style={{ maxWidth: '100%', padding: '2rem' }}>

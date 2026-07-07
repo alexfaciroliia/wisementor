@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       }
     )
 
-    // Validar se o usuário atual está autenticado e é um 'administrador'
+    // Validar se o usuário atual está autenticado
     const { data: { user } } = await userClient.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
@@ -35,9 +35,28 @@ export async function POST(request: Request) {
       .eq('id', user.id)
       .single()
 
-    if (!profile || profile.role !== 'administrador') {
-      return NextResponse.json({ error: 'Apenas administradores podem convidar.' }, { status: 403 })
+    if (!profile) {
+      return NextResponse.json({ error: 'Perfil não encontrado.' }, { status: 403 })
     }
+
+    // 1. Operador não pode enviar nenhum convite
+    if (profile.role === 'operador') {
+      return NextResponse.json({ error: 'Acesso negado. Operadores não podem enviar convites.' }, { status: 403 })
+    }
+
+    // 2. Validar o papel do convite
+    const allowedRolesForInvite = ['sistema', 'administrador', 'operador']
+    if (!allowedRolesForInvite.includes(role)) {
+      return NextResponse.json({ error: 'Papel do convite inválido.' }, { status: 400 })
+    }
+
+    // 3. Administrador não pode convidar usuário nível 'sistema'
+    if (profile.role === 'administrador' && role === 'sistema') {
+      return NextResponse.json({
+        error: 'Acesso negado. Usuários administradores não podem convidar nível Sistema.'
+      }, { status: 403 })
+    }
+
 
 
     // 2. Criar cliente com SERVICE_ROLE para realizar ações administrativas
