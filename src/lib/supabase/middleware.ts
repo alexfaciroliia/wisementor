@@ -39,8 +39,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  // Se já estiver logado e tentar acessar Login, Completar Cadastro ou Esqueci Senha -> Dashboard
-  if (user && (pathname === '/login' || pathname === '/esqueci-senha' || pathname === '/completar-cadastro')) {
+  // Se já estiver logado e tentar acessar Login ou Esqueci Senha -> Dashboard
+  // Nota: /completar-cadastro NÃO é bloqueado aqui pois usuários convidados precisam acessá-lo
+  // para definir nome e senha, mesmo já estando autenticados via token do convite.
+  if (user && (pathname === '/login' || pathname === '/esqueci-senha')) {
     const dashboardUrl = request.nextUrl.clone()
     dashboardUrl.pathname = '/dashboard'
     return NextResponse.redirect(dashboardUrl)
