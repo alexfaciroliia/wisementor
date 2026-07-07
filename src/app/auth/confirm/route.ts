@@ -24,6 +24,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(`${origin}/login?error=token`)
+  return NextResponse.redirect(`${origin}/auth/convite-invalido`)
 }
+
 

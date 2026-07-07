@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -12,27 +12,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [tokenError, setTokenError] = useState('')
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search)
-      const hashParams = new URLSearchParams(window.location.hash.substring(1))
-
-      const errorParam = params.get('error')
-      const errorCode = hashParams.get('error_code') || params.get('error_code')
-      
-      if (errorParam === 'token' || errorCode === 'otp_expired' || errorCode === 'access_denied') {
-        setTokenError('Este convite é inválido, expirou ou foi cancelado pelo administrador.')
-      }
-    }
-  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setTokenError('')
+
 
     const supabase = createClient()
     const { error: authError } = await supabase.auth.signInWithPassword({
@@ -78,15 +63,6 @@ export default function LoginPage() {
           <span>{error}</span>
         </div>
       )}
-
-      {/* Alerta de erro de token/convite inválido */}
-      {tokenError && (
-        <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
-          <span>⚠️</span>
-          <span>{tokenError}</span>
-        </div>
-      )}
-
 
       {/* Formulário */}
       <form className="auth-form" onSubmit={handleLogin} noValidate>
