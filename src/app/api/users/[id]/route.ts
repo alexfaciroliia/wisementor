@@ -180,3 +180,83 @@ export async function PATCH(
     return NextResponse.json({ error: err.message || 'Erro interno.' }, { status: 500 })
   }
 }
+
+// ── EDITAR PAPEL DO USUÁRIO ──
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: targetUserId } = await params
+    const { role: newRole } = await request.json()
+
+    const allowedRoles = ['sistema', 'administrador', 'operador']
+    if (!newRole || !allowedRoles.includes(newRole)) {
+      return NextResponse.json({ error: 'Papel (role) inválido.' }, { status: 400 })
+    }
+
+    const userClient = await getUserClient()
+
+    // 1. Verificar autenticação
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
+    }
+
+    // 2. Não pode alterar o próprio papel por segurança (evita lockout)
+    if (user.id === targetUserId) {
+      return NextResponse.json({ error: 'Você não pode alterar seu próprio nível de acesso.' }, { status: 400 })
+    }
+
+    // 3. Verificar permissão do usuário logado
+    const profile = await getAuthProfile(userClient, user.id)
+    if (!profile || profile.role === 'operador') {
+      return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 })
+    }
+
+    // 4. Verificar o papel do usuário alvo
+    const { data: targetProfile } = await userClient
+      .from('profiles')
+      .select('role')
+      .eq('id', targetUserId)
+      .single()
+
+    if (!targetProfile) {
+      return NextResponse.json({ error: 'Usuário não encontrado.' }, { status: 404 })
+    }
+
+    // Validar hierarquia
+    if (profile.role === 'administrador') {
+      // Admin não pode editar usuário sistema, nem atribuir papel sistema
+      if (targetProfile.role === 'sistema' || newRole === 'sistema') {
+        return NextResponse.json({ error: 'Acesso negado. Administradores não podem gerenciar ou atribuir nível Sistema.' }, { status: 403 })
+      }
+    }
+
+    const adminClient = getAdminClient()
+
+    // 5. Atualizar na tabela profiles
+    const { error: dbError } = await userClient
+      .from('profiles')
+      .update({ role: newRole })
+      .eq('id', targetUserId)
+
+    if (dbError) {
+      return NextResponse.json({ error: `Erro ao atualizar banco: ${dbError.message}` }, { status: 500 })
+    }
+
+    // 6. Atualizar nos metadados do Supabase Auth
+    const { error: authError } = await adminClient.auth.admin.updateUserById(targetUserId, {
+      user_metadata: { role: newRole }
+    })
+
+    if (authError) {
+      return NextResponse.json({ error: `Erro ao atualizar metadados no Auth: ${authError.message}` }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, role: newRole })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Erro interno.' }, { status: 500 })
+  }
+}
+

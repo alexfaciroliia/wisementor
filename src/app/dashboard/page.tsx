@@ -71,6 +71,16 @@ export default function DashboardPage() {
   const [userActionTarget, setUserActionTarget] = useState<{ id: string; name: string; action: 'delete' | 'ban' | 'unban' } | null>(null)
   const [userActionLoading, setUserActionLoading] = useState(false)
 
+  // Estados do modal de editar papel do usuário
+  const [isUserEditModalOpen, setIsUserEditModalOpen] = useState(false)
+  const [editUserId, setEditUserId] = useState('')
+  const [editUserEmail, setEditUserEmail] = useState('')
+  const [editUserName, setEditUserName] = useState('')
+  const [editUserRole, setEditUserRole] = useState('')
+  const [editUserLoading, setEditUserLoading] = useState(false)
+  const [editUserError, setEditUserError] = useState('')
+  const [editUserSuccess, setEditUserSuccess] = useState('')
+
 
   const supabase = createClient()
 
@@ -191,7 +201,7 @@ export default function DashboardPage() {
         const { data: usersList } = await supabase
           .from('profiles')
           .select('id, full_name, email, role, avatar_url, created_at')
-          .order('created_at', { ascending: false })
+          .order('full_name', { ascending: true })
 
         if (usersList) {
           setAllUsers(usersList as Profile[])
@@ -204,7 +214,7 @@ export default function DashboardPage() {
           .from('profiles')
           .select('id, full_name, email, role, avatar_url, created_at')
           .neq('role', 'sistema')
-          .order('created_at', { ascending: false })
+          .order('full_name', { ascending: true })
 
         if (usersList) {
           setAllUsers(usersList as Profile[])
@@ -444,13 +454,13 @@ export default function DashboardPage() {
       const { data: usersList } = await supabase
         .from('profiles')
         .select('id, full_name, email, role, avatar_url, created_at')
-        .order('created_at', { ascending: false })
+        .order('full_name', { ascending: true })
       if (usersList) setAllUsers(usersList as Profile[])
     } else if (profile?.role === 'administrador') {
       const { data: usersList } = await supabase
         .from('profiles')
         .select('id, full_name, email, role, avatar_url, created_at')
-        .order('created_at', { ascending: false })
+        .order('full_name', { ascending: true })
         .neq('role', 'sistema')
       if (usersList) setAllUsers(usersList as Profile[])
     }
@@ -489,6 +499,53 @@ export default function DashboardPage() {
       setUserActionLoading(false)
       setIsUserConfirmModalOpen(false)
       setUserActionTarget(null)
+    }
+  }
+
+
+  function openEditUserModal(u: Profile) {
+    setEditUserId(u.id)
+    setEditUserEmail(u.email)
+    setEditUserName(u.full_name || 'Usuário Sem Nome')
+    setEditUserRole(u.role)
+    setEditUserError('')
+    setEditUserSuccess('')
+    setIsUserEditModalOpen(true)
+  }
+
+  async function handleUpdateUserRole(e: React.FormEvent) {
+    e.preventDefault()
+    setEditUserLoading(true)
+    setEditUserError('')
+    setEditUserSuccess('')
+
+    try {
+      const response = await fetch(`/api/users/${editUserId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: editUserRole })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setEditUserError(data.error || 'Erro ao atualizar nível de acesso.')
+        setEditUserLoading(false)
+        return
+      }
+
+      setEditUserSuccess('Nível de acesso atualizado com sucesso!')
+      
+      // Recarregar lista de usuários
+      await reloadUsers()
+
+      setTimeout(() => {
+        setIsUserEditModalOpen(false)
+      }, 1500)
+    } catch {
+      setEditUserError('Erro de conexão.')
+    } finally {
+      setEditUserLoading(false)
     }
   }
 
@@ -843,6 +900,14 @@ export default function DashboardPage() {
                         <td style={{ textAlign: 'center' }}>
                           {canManage ? (
                             <div style={{ display: 'flex', justifyContent: 'center', gap: '0.375rem' }}>
+                              <button
+                                onClick={() => openEditUserModal(u)}
+                                className="profile-action-btn"
+                                style={{ width: '2rem', height: '2rem', padding: 0 }}
+                                title="Editar Nível de Acesso"
+                              >
+                                ✏️
+                              </button>
                               {isBanned ? (
                                 <button
                                   onClick={() => openUserAction(u.id, u.full_name || u.email, 'unban')}
@@ -1236,6 +1301,93 @@ export default function DashboardPage() {
                 {userActionLoading ? <span className="spinner" /> : 'Confirmar'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Editar Papel do Usuário */}
+      {isUserEditModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header">
+              <h3 className="modal-title">Alterar Nível de Acesso</h3>
+              <button onClick={() => setIsUserEditModalOpen(false)} className="modal-close">
+                &times;
+              </button>
+            </div>
+
+            {editUserError && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                <span>⚠️</span>
+                <span>{editUserError}</span>
+              </div>
+            )}
+
+            {editUserSuccess && (
+              <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+                <span>✅</span>
+                <span>{editUserSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateUserRole} className="auth-form" noValidate>
+              <div className="form-field">
+                <label className="form-label">Usuário</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editUserName}
+                  disabled
+                  style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">E-mail</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={editUserEmail}
+                  disabled
+                  style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">Nível de Acesso (Papel)</label>
+                <select
+                  value={editUserRole}
+                  onChange={(e) => setEditUserRole(e.target.value)}
+                  className="form-input"
+                  style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
+                >
+                  <option value="operador">Operador</option>
+                  <option value="administrador">Administrador</option>
+                  {profile?.role === 'sistema' && (
+                    <option value="sistema">Sistema</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => setIsUserEditModalOpen(false)}
+                  className="btn-secondary"
+                  disabled={editUserLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ marginTop: 0 }}
+                  disabled={editUserLoading}
+                >
+                  {editUserLoading ? <span className="spinner" /> : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
