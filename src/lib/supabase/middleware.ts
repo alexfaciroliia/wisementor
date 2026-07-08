@@ -26,7 +26,7 @@ export async function updateSession(request: NextRequest) {
   )
 
   // Rotas públicas (não precisam de autenticação na camada de proxy)
-  const publicRoutes = ['/login', '/cadastro', '/esqueci-senha', '/verificar-email', '/auth', '/completar-cadastro']
+  const publicRoutes = ['/login', '/cadastro', '/esqueci-senha', '/verificar-email', '/auth', '/completar-cadastro', '/api/run-migration']
   const { pathname } = request.nextUrl
   const isPublic = pathname === '/' || publicRoutes.some((route) => pathname.startsWith(route))
 
