@@ -38,16 +38,27 @@ export default function CompletarCadastroPage() {
     setLoading(true)
     const supabase = createClient()
 
-    // 1. Atualizar nome e senha do usuário convidado
-    const { error: authError } = await supabase.auth.updateUser({
+    // 1. Atualizar nome e senha do usuário convidado no Auth
+    const { data: { user }, error: authError } = await supabase.auth.updateUser({
       password,
       data: { full_name: nome },
     })
 
-    if (authError) {
+    if (authError || !user) {
       setError('Ocorreu um erro ao concluir seu cadastro. O convite pode ter expirado.')
       setLoading(false)
       return
+    }
+
+    // 2. Atualizar a tabela profiles com o nome completo
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ full_name: nome })
+      .eq('id', user.id)
+
+    if (profileError) {
+      // Se der erro ao salvar o nome, não travamos totalmente o fluxo, mas registramos o log
+      console.error('Erro ao atualizar perfil:', profileError)
     }
 
     setSuccess(true)
