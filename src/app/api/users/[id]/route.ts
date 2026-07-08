@@ -90,7 +90,7 @@ export async function DELETE(
     const adminClient = getAdminClient()
 
     // 5. Excluir perfil da tabela profiles
-    await userClient
+    await adminClient
       .from('profiles')
       .delete()
       .eq('id', targetUserId)
@@ -236,7 +236,7 @@ export async function PUT(
     const adminClient = getAdminClient()
 
     // 5. Atualizar na tabela profiles
-    const { error: dbError } = await userClient
+    const { error: dbError } = await adminClient
       .from('profiles')
       .update({ role: newRole })
       .eq('id', targetUserId)
