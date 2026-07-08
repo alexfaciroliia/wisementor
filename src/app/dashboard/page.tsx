@@ -11,6 +11,7 @@ interface Profile {
   role: 'sistema' | 'administrador' | 'operador'
   avatar_url: string
   created_at: string
+  banned_until?: string | null
 }
 
 
@@ -20,6 +21,7 @@ interface Invitation {
   role: string
   status: 'pending' | 'accepted' | 'revoked'
   created_at: string
+  expires_at?: string | null
 }
 
 export default function DashboardPage() {
@@ -63,8 +65,45 @@ export default function DashboardPage() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [inviteIdToDelete, setInviteIdToDelete] = useState<string | null>(null)
 
+  // Estados para gerenciamento de usuários
+  const [isUserConfirmModalOpen, setIsUserConfirmModalOpen] = useState(false)
+  const [userActionTarget, setUserActionTarget] = useState<{ id: string; name: string; action: 'delete' | 'ban' | 'unban' } | null>(null)
+  const [userActionLoading, setUserActionLoading] = useState(false)
+
 
   const supabase = createClient()
+
+  // Helper: calcular status efetivo do convite
+  function getInviteDisplayStatus(inv: Invitation): 'accepted' | 'pending' | 'expired' {
+    if (inv.status === 'accepted') return 'accepted'
+    if (inv.expires_at && new Date(inv.expires_at) < new Date()) return 'expired'
+    return 'pending'
+  }
+
+  // Helper: tempo relativo para expiração
+  function getExpirationText(expiresAt: string | null | undefined): string {
+    if (!expiresAt) return ''
+    const now = new Date()
+    const expires = new Date(expiresAt)
+    const diffMs = expires.getTime() - now.getTime()
+
+    if (diffMs <= 0) {
+      // Expirado
+      const agoMs = Math.abs(diffMs)
+      const agoHours = Math.floor(agoMs / (1000 * 60 * 60))
+      if (agoHours < 1) return 'Expirado há poucos minutos'
+      if (agoHours < 24) return `Expirado há ${agoHours}h`
+      const agoDays = Math.floor(agoHours / 24)
+      return `Expirado há ${agoDays} dia${agoDays > 1 ? 's' : ''}`
+    }
+
+    // Ainda válido
+    const remainHours = Math.floor(diffMs / (1000 * 60 * 60))
+    if (remainHours < 1) return 'Expira em breve'
+    if (remainHours < 24) return `Expira em ${remainHours}h`
+    const remainDays = Math.floor(remainHours / 24)
+    return `Expira em ${remainDays} dia${remainDays > 1 ? 's' : ''}`
+  }
 
 
 
@@ -108,7 +147,7 @@ export default function DashboardPage() {
         // Sistema vê todos os convites e todos os usuários
         const { data: inviteList } = await supabase
           .from('invitations')
-          .select('id, email, role, status, created_at')
+          .select('id, email, role, status, created_at, expires_at')
           .order('created_at', { ascending: false })
 
         if (inviteList) {
@@ -127,7 +166,7 @@ export default function DashboardPage() {
         // Administrador vê convites e usuários, EXCETO nível 'sistema'
         const { data: inviteList } = await supabase
           .from('invitations')
-          .select('id, email, role, status, created_at')
+          .select('id, email, role, status, created_at, expires_at')
           .neq('role', 'sistema')
           .order('created_at', { ascending: false })
 
@@ -184,14 +223,14 @@ export default function DashboardPage() {
     if (profile?.role === 'sistema') {
       const { data: inviteList } = await supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, created_at, expires_at')
         .order('created_at', { ascending: false })
 
       if (inviteList) setInvitations(inviteList as Invitation[])
     } else if (profile?.role === 'administrador') {
       const { data: inviteList } = await supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, created_at, expires_at')
         .neq('role', 'sistema')
         .order('created_at', { ascending: false })
 
@@ -332,14 +371,14 @@ export default function DashboardPage() {
     if (profile?.role === 'sistema') {
       const { data: inviteList } = await supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, created_at, expires_at')
         .order('created_at', { ascending: false })
 
       if (inviteList) setInvitations(inviteList as Invitation[])
     } else if (profile?.role === 'administrador') {
       const { data: inviteList } = await supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, created_at, expires_at')
         .neq('role', 'sistema')
         .order('created_at', { ascending: false })
 
@@ -386,14 +425,14 @@ export default function DashboardPage() {
     if (profile?.role === 'sistema') {
       const { data: inviteList } = await supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, created_at, expires_at')
         .order('created_at', { ascending: false })
 
       if (inviteList) setInvitations(inviteList as Invitation[])
     } else if (profile?.role === 'administrador') {
       const { data: inviteList } = await supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, created_at, expires_at')
         .neq('role', 'sistema')
         .order('created_at', { ascending: false })
 
@@ -405,6 +444,65 @@ export default function DashboardPage() {
     }, 1500)
 
     setEditInviteLoading(false)
+  }
+
+  // ── Ações de Gerenciamento de Usuários ──
+  function openUserAction(userId: string, userName: string, action: 'delete' | 'ban' | 'unban') {
+    setUserActionTarget({ id: userId, name: userName, action })
+    setIsUserConfirmModalOpen(true)
+  }
+
+  async function reloadUsers() {
+    if (profile?.role === 'sistema') {
+      const { data: usersList } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role, avatar_url, created_at')
+        .order('created_at', { ascending: false })
+      if (usersList) setAllUsers(usersList as Profile[])
+    } else if (profile?.role === 'administrador') {
+      const { data: usersList } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role, avatar_url, created_at')
+        .order('created_at', { ascending: false })
+        .neq('role', 'sistema')
+      if (usersList) setAllUsers(usersList as Profile[])
+    }
+  }
+
+  async function confirmUserAction() {
+    if (!userActionTarget) return
+    setUserActionLoading(true)
+
+    try {
+      if (userActionTarget.action === 'delete') {
+        const response = await fetch(`/api/users/${userActionTarget.id}`, { method: 'DELETE' })
+        const data = await response.json()
+        if (!response.ok) {
+          alert(data.error || 'Erro ao excluir usuário.')
+          return
+        }
+      } else {
+        const response = await fetch(`/api/users/${userActionTarget.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: userActionTarget.action })
+        })
+        const data = await response.json()
+        if (!response.ok) {
+          alert(data.error || 'Erro ao processar ação.')
+          return
+        }
+      }
+
+      // Recarregar lista de usuários
+      await reloadUsers()
+    } catch {
+      alert('Erro de conexão.')
+    } finally {
+      setUserActionLoading(false)
+      setIsUserConfirmModalOpen(false)
+      setUserActionTarget(null)
+    }
   }
 
 
@@ -618,41 +716,70 @@ export default function DashboardPage() {
                   <p style={{ color: '#8b8fa8', fontSize: '0.9rem' }}>Nenhum convite enviado até o momento.</p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '420px', overflowY: 'auto', paddingRight: '0.25rem' }}>
-                    {invitations.map((inv) => (
+                    {invitations.map((inv) => {
+                      const displayStatus = getInviteDisplayStatus(inv)
+                      const expirationText = getExpirationText(inv.expires_at)
+                      return (
                       <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px' }}>
                         <div>
                           <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{inv.email}</div>
                           <div style={{ fontSize: '0.78rem', color: '#8b8fa8', marginTop: '0.125rem' }}>
                             Papel: <strong>{inv.role}</strong>
                           </div>
+                          {expirationText && displayStatus !== 'accepted' && (
+                            <div style={{ fontSize: '0.7rem', color: displayStatus === 'expired' ? '#ef4444' : '#8b8fa8', marginTop: '0.25rem' }}>
+                              ⏱️ {expirationText}
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          {inv.status === 'pending' && (
-                            <div style={{ display: 'flex', gap: '0.375rem' }}>
+                          <div style={{ display: 'flex', gap: '0.375rem' }}>
+                            {/* Reenviar: disponível para pendentes e expirados */}
+                            {(displayStatus === 'pending' || displayStatus === 'expired') && (
                               <button 
                                 onClick={() => openEditInviteModal(inv)}
                                 className="profile-action-btn"
                                 style={{ width: '2rem', height: '2rem', padding: 0 }}
-                                title="Editar e Reenviar"
+                                title={displayStatus === 'expired' ? 'Reenviar Convite Expirado' : 'Editar e Reenviar'}
                               >
-                                ✏️
+                                {displayStatus === 'expired' ? '🔄' : '✏️'}
                               </button>
-                              <button 
-                                onClick={() => handleDeleteInvite(inv.id)}
-                                className="profile-action-btn"
-                                style={{ width: '2rem', height: '2rem', padding: 0, borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
-                                title="Anular e Excluir"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          )}
-                          <span className={`alert alert-${inv.status === 'accepted' ? 'success' : 'error'}`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '6px', border: 'none', margin: 0 }}>
-                            {inv.status === 'accepted' ? 'Aceito' : 'Pendente'}
+                            )}
+                            {/* Excluir: disponível para todos os status */}
+                            <button 
+                              onClick={() => handleDeleteInvite(inv.id)}
+                              className="profile-action-btn"
+                              style={{ width: '2rem', height: '2rem', padding: 0, borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
+                              title="Excluir Convite"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                          <span 
+                            style={{ 
+                              padding: '0.25rem 0.5rem', 
+                              fontSize: '0.75rem', 
+                              borderRadius: '6px', 
+                              border: 'none', 
+                              margin: 0,
+                              fontWeight: 600,
+                              background: displayStatus === 'accepted' 
+                                ? 'rgba(34, 197, 94, 0.15)' 
+                                : displayStatus === 'expired' 
+                                  ? 'rgba(239, 68, 68, 0.15)' 
+                                  : 'rgba(234, 179, 8, 0.15)',
+                              color: displayStatus === 'accepted' 
+                                ? '#22c55e' 
+                                : displayStatus === 'expired' 
+                                  ? '#ef4444' 
+                                  : '#eab308'
+                            }}
+                          >
+                            {displayStatus === 'accepted' ? 'Aceito' : displayStatus === 'expired' ? 'Expirado' : 'Pendente'}
                           </span>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 )}
               </div>
@@ -676,7 +803,9 @@ export default function DashboardPage() {
                     <th>Nome</th>
                     <th>E-mail</th>
                     <th>Acesso</th>
+                    <th>Status</th>
                     <th>Data de Cadastro</th>
+                    <th style={{ textAlign: 'center' }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -684,8 +813,11 @@ export default function DashboardPage() {
                     const uInitials = u.full_name
                       ? u.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
                       : 'U';
+                    const isSelf = u.id === profile?.id
+                    const isBanned = u.banned_until && new Date(u.banned_until) > new Date()
+                    const canManage = !isSelf && !(profile?.role === 'administrador' && u.role === 'sistema')
                     return (
-                      <tr key={u.id}>
+                      <tr key={u.id} style={{ opacity: isBanned ? 0.6 : 1 }}>
                         <td style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontWeight: 600 }}>
                           {u.avatar_url ? (
                             <img 
@@ -706,8 +838,56 @@ export default function DashboardPage() {
                             {u.role}
                           </span>
                         </td>
+                        <td>
+                          {isBanned ? (
+                            <span style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', fontWeight: 600 }}>
+                              🔒 Bloqueado
+                            </span>
+                          ) : (
+                            <span style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', fontWeight: 600 }}>
+                              ✅ Ativo
+                            </span>
+                          )}
+                        </td>
                         <td style={{ color: '#8b8fa8' }}>
                           {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {canManage ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.375rem' }}>
+                              {isBanned ? (
+                                <button
+                                  onClick={() => openUserAction(u.id, u.full_name || u.email, 'unban')}
+                                  className="profile-action-btn"
+                                  style={{ width: '2rem', height: '2rem', padding: 0 }}
+                                  title="Desbloquear Usuário"
+                                >
+                                  🔓
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => openUserAction(u.id, u.full_name || u.email, 'ban')}
+                                  className="profile-action-btn"
+                                  style={{ width: '2rem', height: '2rem', padding: 0 }}
+                                  title="Bloquear Usuário"
+                                >
+                                  🔒
+                                </button>
+                              )}
+                              <button
+                                onClick={() => openUserAction(u.id, u.full_name || u.email, 'delete')}
+                                className="profile-action-btn"
+                                style={{ width: '2rem', height: '2rem', padding: 0, borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444' }}
+                                title="Excluir Usuário"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#555', fontSize: '0.75rem' }}>
+                              {isSelf ? 'Você' : '—'}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1011,6 +1191,61 @@ export default function DashboardPage() {
                 style={{ width: 'auto', padding: '0 1.5rem', marginTop: 0, background: '#ef4444', boxShadow: '0 4px 20px rgba(239, 68, 68, 0.35)' }}
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Confirmação de Ação em Usuário */}
+      {isUserConfirmModalOpen && userActionTarget && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '420px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>
+              {userActionTarget.action === 'delete' ? '🗑️' : userActionTarget.action === 'ban' ? '🔒' : '🔓'}
+            </div>
+            <h3 className="modal-title" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
+              {userActionTarget.action === 'delete' && 'Excluir Usuário'}
+              {userActionTarget.action === 'ban' && 'Bloquear Usuário'}
+              {userActionTarget.action === 'unban' && 'Desbloquear Usuário'}
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.5', marginBottom: '0.5rem' }}>
+              {userActionTarget.action === 'delete' && (
+                <>Deseja realmente <strong>excluir permanentemente</strong> o usuário <strong>{userActionTarget.name}</strong>? Esta ação não pode ser desfeita.</>
+              )}
+              {userActionTarget.action === 'ban' && (
+                <>Deseja <strong>bloquear</strong> o acesso do usuário <strong>{userActionTarget.name}</strong>? Ele não conseguirá fazer login até ser desbloqueado.</>
+              )}
+              {userActionTarget.action === 'unban' && (
+                <>Deseja <strong>desbloquear</strong> o acesso do usuário <strong>{userActionTarget.name}</strong>? Ele poderá fazer login novamente.</>
+              )}
+            </p>
+            <div className="modal-actions" style={{ justifyContent: 'center', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <button
+                onClick={() => {
+                  setIsUserConfirmModalOpen(false)
+                  setUserActionTarget(null)
+                }}
+                className="btn-secondary"
+                style={{ width: 'auto', padding: '0 1.5rem' }}
+                disabled={userActionLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmUserAction}
+                className="btn-primary"
+                style={{ 
+                  width: 'auto', 
+                  padding: '0 1.5rem', 
+                  marginTop: 0, 
+                  background: userActionTarget.action === 'unban' ? '#22c55e' : '#ef4444', 
+                  boxShadow: userActionTarget.action === 'unban' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.35)' 
+                    : '0 4px 20px rgba(239, 68, 68, 0.35)' 
+                }}
+                disabled={userActionLoading}
+              >
+                {userActionLoading ? <span className="spinner" /> : 'Confirmar'}
               </button>
             </div>
           </div>

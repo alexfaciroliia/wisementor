@@ -178,12 +178,14 @@ export async function PUT(
     }
 
     // 4. Atualizar a linha de convite no banco de dados
+    const newExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
     const { error: updateError } = await userClient
       .from('invitations')
       .update({
         email: newEmail,
         role: newRole,
-        status: 'pending' // Reseta status para pendente
+        status: 'pending', // Reseta status para pendente
+        expires_at: newExpiresAt
       })
       .eq('id', id)
 

@@ -87,14 +87,16 @@ export async function POST(request: Request) {
       }
     )
 
-    // 3. Salvar o convite na tabela de convites
+    // 3. Salvar o convite na tabela de convites (validade de 48h)
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
     const { error: dbError } = await userClient
       .from('invitations')
       .insert({
         email,
         role,
         invited_by: user.id,
-        status: 'pending'
+        status: 'pending',
+        expires_at: expiresAt
       })
 
     if (dbError) {
