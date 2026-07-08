@@ -158,42 +158,18 @@ export async function PATCH(
     const adminClient = getAdminClient()
 
     if (action === 'ban') {
-      const banUntilDate = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString() // ~100 anos
-      
-      // Banir o usuário no Supabase Auth
       const { error } = await adminClient.auth.admin.updateUserById(targetUserId, {
         ban_duration: '876000h' // ~100 anos
       })
       if (error) {
-        return NextResponse.json({ error: `Erro ao bloquear usuário no Auth: ${error.message}` }, { status: 500 })
-      }
-
-      // Atualizar na tabela profiles
-      const { error: dbError } = await adminClient
-        .from('profiles')
-        .update({ banned_until: banUntilDate })
-        .eq('id', targetUserId)
-
-      if (dbError) {
-        return NextResponse.json({ error: `Bloqueado no Auth, mas falhou ao atualizar banco: ${dbError.message}` }, { status: 500 })
+        return NextResponse.json({ error: `Erro ao bloquear usuário: ${error.message}` }, { status: 500 })
       }
     } else {
-      // Desbanir no Supabase Auth
       const { error } = await adminClient.auth.admin.updateUserById(targetUserId, {
         ban_duration: 'none'
       })
       if (error) {
-        return NextResponse.json({ error: `Erro ao desbloquear usuário no Auth: ${error.message}` }, { status: 500 })
-      }
-
-      // Limpar na tabela profiles
-      const { error: dbError } = await adminClient
-        .from('profiles')
-        .update({ banned_until: null })
-        .eq('id', targetUserId)
-
-      if (dbError) {
-        return NextResponse.json({ error: `Desbloqueado no Auth, mas falhou ao atualizar banco: ${dbError.message}` }, { status: 500 })
+        return NextResponse.json({ error: `Erro ao desbloquear usuário: ${error.message}` }, { status: 500 })
       }
     }
 

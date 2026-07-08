@@ -108,25 +108,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     // Carregar listas dependendo do papel
-    if (loadedProfile.role === 'sistema') {
+    if (loadedProfile.role === 'sistema' || loadedProfile.role === 'administrador') {
       await reloadInvitations(loadedProfile.role)
-      const { data: usersList } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role, avatar_url, created_at')
-        .order('full_name', { ascending: true })
-      if (usersList) {
-        setAllUsers(usersList as Profile[])
-      }
-    } else if (loadedProfile.role === 'administrador') {
-      await reloadInvitations(loadedProfile.role)
-      const { data: usersList } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role, avatar_url, created_at')
-        .neq('role', 'sistema')
-        .order('full_name', { ascending: true })
-      if (usersList) {
-        setAllUsers(usersList as Profile[])
-      }
+      await reloadUsers(loadedProfile.role)
     }
 
     setLoading(false)
@@ -183,21 +167,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }
 
-  // Buscar usuários de forma resiliente
+  // Buscar usuários com status de bloqueio via API (inclui banned_until do Auth)
   async function reloadUsers(userRole: string) {
-    if (userRole === 'sistema') {
-      const { data: usersList } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role, avatar_url, created_at')
-        .order('full_name', { ascending: true })
-      if (usersList) setAllUsers(usersList as Profile[])
-    } else if (userRole === 'administrador') {
-      const { data: usersList } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role, avatar_url, created_at')
-        .order('full_name', { ascending: true })
-        .neq('role', 'sistema')
-      if (usersList) setAllUsers(usersList as Profile[])
+    if (userRole !== 'sistema' && userRole !== 'administrador') return
+    try {
+      const response = await fetch('/api/users')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.users) setAllUsers(data.users as Profile[])
+      }
+    } catch {
+      // fallback silencioso
     }
   }
 
