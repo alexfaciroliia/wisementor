@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -13,8 +13,10 @@ export default function CompletarCadastroPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [declineLoading, setDeclineLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [declined, setDeclined] = useState(false)
 
   async function handleCompletar(e: React.FormEvent) {
     e.preventDefault()
@@ -57,7 +59,6 @@ export default function CompletarCadastroPage() {
       .eq('id', user.id)
 
     if (profileError) {
-      // Se der erro ao salvar o nome, não travamos totalmente o fluxo, mas registramos o log
       console.error('Erro ao atualizar perfil:', profileError)
     }
 
@@ -66,6 +67,43 @@ export default function CompletarCadastroPage() {
       router.push('/dashboard')
       router.refresh()
     }, 2000)
+  }
+
+  async function handleRecusar() {
+    if (!confirm('Deseja realmente recusar este convite? Sua conta temporária será excluída permanentemente.')) {
+      return
+    }
+    setDeclineLoading(true)
+    setError('')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setError('Não foi possível identificar o usuário.')
+      setDeclineLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/invites/decline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        setError(data.error || 'Erro ao recusar convite.')
+        setDeclineLoading(false)
+        return
+      }
+
+      await supabase.auth.signOut()
+      setDeclined(true)
+    } catch {
+      setError('Erro de conexão.')
+      setDeclineLoading(false)
+    }
   }
 
   return (
@@ -82,7 +120,12 @@ export default function CompletarCadastroPage() {
         <p className="auth-subtitle">Configure sua senha e nome para acessar a plataforma.</p>
       </div>
 
-      {success ? (
+      {declined ? (
+        <div className="alert alert-error" role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', marginBottom: 0 }}>
+          <span>❌</span>
+          <span>Você recusou o convite. Sua conta temporária foi removida e o convite foi anulado.</span>
+        </div>
+      ) : success ? (
         <div className="alert alert-success" role="alert">
           <span>✅</span>
           <span>Cadastro concluído! Acessando a plataforma...</span>
@@ -178,22 +221,33 @@ export default function CompletarCadastroPage() {
               <span className="form-hint">Use letras, números e símbolos para mais segurança.</span>
             </div>
 
-
-            <button
-              type="submit"
-              id="btn-completar"
-              className="btn-primary"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <span className="spinner" />
-                  Salvando dados...
-                </>
-              ) : (
-                'Concluir e Acessar'
-              )}
-            </button>
+            <div style={{ display: 'flex', gap: '0.875rem', marginTop: '1.75rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRecusar}
+                style={{ flex: 1, border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', height: '3rem', marginTop: 0 }}
+                disabled={loading || declineLoading}
+              >
+                {declineLoading ? <span className="spinner" /> : 'Recusar Convite'}
+              </button>
+              <button
+                type="submit"
+                id="btn-completar"
+                className="btn-primary"
+                style={{ flex: 1.5, marginTop: 0, height: '3rem' }}
+                disabled={loading || declineLoading}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner" style={{ marginRight: '0.5rem' }} />
+                    Concluindo...
+                  </>
+                ) : (
+                  'Aceitar e Acessar'
+                )}
+              </button>
+            </div>
           </form>
         </>
       )}
