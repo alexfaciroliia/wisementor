@@ -26,11 +26,14 @@ export default function LoginPage() {
     })
 
     if (authError) {
+      const msg = authError.message.toLowerCase()
       setError(
-        authError.message === 'Invalid login credentials'
+        msg.includes('invalid login credentials')
           ? 'E-mail ou senha incorretos. Verifique e tente novamente.'
-          : authError.message === 'Email not confirmed'
+          : msg.includes('email not confirmed')
           ? 'Confirme seu e-mail antes de fazer login. Verifique sua caixa de entrada.'
+          : msg.includes('user banned') || msg.includes('banned')
+          ? 'Usuário bloqueado. Contate o administrador do sistema.'
           : 'Ocorreu um erro ao entrar. Tente novamente.'
       )
       setLoading(false)

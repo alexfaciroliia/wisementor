@@ -32,6 +32,24 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Se o usuário está logado mas foi bloqueado -> forçar logout e redirecionar
+  if (user && !isPublic) {
+    const bannedUntil = (user as any).banned_until
+    if (bannedUntil && new Date(bannedUntil) > new Date()) {
+      await supabase.auth.signOut()
+      const loginUrl = request.nextUrl.clone()
+      loginUrl.pathname = '/login'
+      const response = NextResponse.redirect(loginUrl)
+      // Limpar cookies de sessão
+      request.cookies.getAll().forEach(({ name }) => {
+        if (name.startsWith('sb-')) {
+          response.cookies.delete(name)
+        }
+      })
+      return response
+    }
+  }
+
   // Se não estiver logado e tentar rota protegida -> Login
   if (!isPublic && !user) {
     const loginUrl = request.nextUrl.clone()
