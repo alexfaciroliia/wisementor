@@ -87,21 +87,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return
     }
 
-    let loadedProfile: Profile
     if (profileError || !userProfile) {
-      loadedProfile = {
-        id: user.id,
-        full_name: user.user_metadata?.full_name || 'Usuário',
-        email: user.email || '',
-        role: 'operador',
-        avatar_url: user.user_metadata?.avatar_url || '',
-        created_at: new Date().toISOString()
-      }
-    } else {
-      loadedProfile = {
-        ...(userProfile as Profile),
-        email: user.email || (userProfile as Profile).email
-      }
+      console.log('Perfil não encontrado no loadData. Efetuando logout...')
+      await supabase.auth.signOut()
+      router.push('/login')
+      return
+    }
+
+    let loadedProfile: Profile = {
+      ...(userProfile as Profile),
+      email: user.email || (userProfile as Profile).email
     }
     setProfile(loadedProfile)
 
@@ -142,13 +137,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'profiles',
           filter: `id=eq.${profile.id}`
         },
         async (payload: any) => {
           console.log('Alteração de perfil em tempo real recebida:', payload)
+          if (payload.eventType === 'DELETE') {
+            console.log('Perfil excluído via Realtime. Efetuando logout...')
+            await supabase.auth.signOut()
+            router.push('/login')
+            router.refresh()
+            return
+          }
           if (payload.new) {
             if (payload.new.banned === true) {
               console.log('Usuário bloqueado via Realtime. Efetuando logout...')
@@ -278,13 +280,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data: userProfile } = await supabase
+    const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, avatar_url, created_at, banned')
       .eq('id', user.id)
       .single()
 
-    if (userProfile && userProfile.banned) {
+    if (profileError || !userProfile) {
+      console.log('Perfil não encontrado no reloadProfile. Efetuando logout...')
+      await supabase.auth.signOut()
+      router.push('/login')
+      return
+    }
+
+    if (userProfile.banned) {
       await supabase.auth.signOut()
       router.push('/login')
       return

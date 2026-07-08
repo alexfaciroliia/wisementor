@@ -77,14 +77,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'Acesso negado. Administradores não podem gerenciar convites nível Sistema.' }, { status: 403 })
     }
 
-    const adminClient = getAdminClient()
-
-    // 3. Remover usuário pendente do Supabase Auth para invalidar o link de e-mail
-    const { data: usersData } = await adminClient.auth.admin.listUsers()
-    if (usersData?.users) {
-      const pendingUser = usersData.users.find(u => u.email === invitation.email)
-      if (pendingUser) {
-        await adminClient.auth.admin.deleteUser(pendingUser.id)
+    // 3. Remover usuário pendente do Supabase Auth para invalidar o link de e-mail (apenas se ainda for pendente/não aceito)
+    if (invitation.status !== 'accepted') {
+      const adminClient = getAdminClient()
+      const { data: usersData } = await adminClient.auth.admin.listUsers()
+      if (usersData?.users) {
+        const pendingUser = usersData.users.find(u => u.email === invitation.email)
+        if (pendingUser) {
+          await adminClient.auth.admin.deleteUser(pendingUser.id)
+        }
       }
     }
 
