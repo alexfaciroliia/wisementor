@@ -165,6 +165,15 @@ export async function PATCH(
         return NextResponse.json({ error: `Erro ao bloquear usuário: ${error.message}` }, { status: 500 })
       }
 
+      // Atualizar na tabela profiles
+      const { error: dbError } = await adminClient
+        .from('profiles')
+        .update({ banned: true })
+        .eq('id', targetUserId)
+      if (dbError) {
+        return NextResponse.json({ error: `Bloqueado no Auth, mas falhou ao atualizar banco: ${dbError.message}` }, { status: 500 })
+      }
+
       // Forçar logout imediato de todas as sessões ativas
       await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${targetUserId}/logout`,
@@ -182,6 +191,15 @@ export async function PATCH(
       })
       if (error) {
         return NextResponse.json({ error: `Erro ao desbloquear usuário: ${error.message}` }, { status: 500 })
+      }
+
+      // Atualizar na tabela profiles
+      const { error: dbError } = await adminClient
+        .from('profiles')
+        .update({ banned: false })
+        .eq('id', targetUserId)
+      if (dbError) {
+        return NextResponse.json({ error: `Desbloqueado no Auth, mas falhou ao atualizar banco: ${dbError.message}` }, { status: 500 })
       }
     }
 

@@ -135,7 +135,7 @@ export default function UsuariosPage() {
                 ? u.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
                 : 'U';
               const isSelf = u.id === profile?.id
-              const isBanned = u.banned_until && new Date(u.banned_until) > new Date()
+              const isBanned = !!u.banned
               const canManage = !isSelf && !(profile?.role === 'administrador' && u.role === 'sistema')
               return (
                 <tr key={u.id} style={{ opacity: isBanned ? 0.6 : 1 }}>

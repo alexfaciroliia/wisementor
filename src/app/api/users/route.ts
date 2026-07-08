@@ -72,7 +72,7 @@ export async function GET() {
     // Buscar perfis do banco
     let profilesQuery = adminClient
       .from('profiles')
-      .select('id, full_name, email, role, avatar_url, created_at')
+      .select('id, full_name, email, role, avatar_url, created_at, banned')
       .order('full_name', { ascending: true })
 
     if (callerRole === 'administrador') {

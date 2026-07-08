@@ -12,7 +12,7 @@ export interface Profile {
   role: 'sistema' | 'administrador' | 'operador'
   avatar_url: string
   created_at: string
-  banned_until?: string | null
+  banned?: boolean
 }
 
 export interface Invitation {
@@ -77,9 +77,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, avatar_url, created_at')
+      .select('id, full_name, email, role, avatar_url, created_at, banned')
       .eq('id', user.id)
       .single()
+
+    if (userProfile && userProfile.banned) {
+      await supabase.auth.signOut()
+      router.push('/login')
+      return
+    }
 
     let loadedProfile: Profile
     if (profileError || !userProfile) {
@@ -120,28 +126,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     loadData()
   }, [])
 
-  // Recarregar dados do perfil a cada navegação de rota + verificar se ainda está ativo
+  // Recarregar dados do perfil a cada navegação de rota
   useEffect(() => {
     if (profile) {
-      // Verificar se o usuário foi bloqueado (via admin check no servidor)
-      fetch('/api/auth/check')
-        .then(r => r.json())
-        .then(async data => {
-          if (data.banned) {
-            // Usuário bloqueado — forçar logout e redirecionar
-            await supabase.auth.signOut()
-            router.push('/login')
-            return
-          }
-          // Usuário válido — recarregar perfil normalmente
-          reloadProfile()
-        })
-        .catch(() => {
-          // Em caso de erro de rede, apenas recarregar perfil
-          reloadProfile()
-        })
+      reloadProfile()
     }
   }, [pathname])
+
+  // Inscrição Realtime para atualizações do perfil do usuário em tempo real
+  useEffect(() => {
+    if (!profile?.id) return
+
+    const channel = supabase
+      .channel(`profile-updates-${profile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${profile.id}`
+        },
+        async (payload: any) => {
+          console.log('Alteração de perfil em tempo real recebida:', payload)
+          if (payload.new) {
+            if (payload.new.banned === true) {
+              console.log('Usuário bloqueado via Realtime. Efetuando logout...')
+              await supabase.auth.signOut()
+              router.push('/login')
+              router.refresh()
+            } else {
+              // Se o papel (role) ou outras informações mudarem, recarrega o perfil
+              reloadProfile()
+            }
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [profile?.id])
 
   // Proteção de rotas dinâmicas a cada alteração do pathname ou do perfil
   useEffect(() => {
@@ -204,9 +230,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const { data: userProfile } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, avatar_url, created_at')
+      .select('id, full_name, email, role, avatar_url, created_at, banned')
       .eq('id', user.id)
       .single()
+
+    if (userProfile && userProfile.banned) {
+      await supabase.auth.signOut()
+      router.push('/login')
+      return
+    }
 
     if (userProfile) {
       const updatedProfile: Profile = {
