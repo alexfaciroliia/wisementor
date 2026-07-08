@@ -77,7 +77,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, avatar_url, created_at, banned_until')
+      .select('id, full_name, email, role, avatar_url, created_at')
       .eq('id', user.id)
       .single()
 
@@ -188,13 +188,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (userRole === 'sistema') {
       const { data: usersList } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role, avatar_url, created_at, banned_until')
+        .select('id, full_name, email, role, avatar_url, created_at')
         .order('full_name', { ascending: true })
       if (usersList) setAllUsers(usersList as Profile[])
     } else if (userRole === 'administrador') {
       const { data: usersList } = await supabase
         .from('profiles')
-        .select('id, full_name, email, role, avatar_url, created_at, banned_until')
+        .select('id, full_name, email, role, avatar_url, created_at')
         .order('full_name', { ascending: true })
         .neq('role', 'sistema')
       if (usersList) setAllUsers(usersList as Profile[])
@@ -208,7 +208,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const { data: userProfile } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, avatar_url, created_at, banned_until')
+      .select('id, full_name, email, role, avatar_url, created_at')
       .eq('id', user.id)
       .single()
 
