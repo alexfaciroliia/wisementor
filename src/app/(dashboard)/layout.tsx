@@ -394,8 +394,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             
             {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
               <Link
-                href="/dashboard/convites"
-                className={`menu-item ${pathname === '/dashboard/convites' ? 'active' : ''}`}
+                href="/convites"
+                className={`menu-item ${pathname === '/convites' ? 'active' : ''}`}
               >
                 ✉️ Convites
               </Link>
@@ -403,16 +403,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
               <Link
-                href="/dashboard/usuarios"
-                className={`menu-item ${pathname === '/dashboard/usuarios' ? 'active' : ''}`}
+                href="/usuarios"
+                className={`menu-item ${pathname === '/usuarios' ? 'active' : ''}`}
               >
                 👥 Usuários
               </Link>
             )}
 
             <Link
-              href="/dashboard/configuracoes"
-              className={`menu-item ${pathname === '/dashboard/configuracoes' ? 'active' : ''}`}
+              href="/configuracoes"
+              className={`menu-item ${pathname === '/configuracoes' ? 'active' : ''}`}
             >
               🛠️ Configurações
             </Link>

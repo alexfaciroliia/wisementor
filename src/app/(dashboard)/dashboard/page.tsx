@@ -1,6 +1,6 @@
 'use client'
 
-import { useDashboard } from './layout'
+import { useDashboard } from '../layout'
 
 export default function DashboardPage() {
   const { profile, invitations, allUsers } = useDashboard()

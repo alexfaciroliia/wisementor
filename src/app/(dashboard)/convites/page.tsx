@@ -421,11 +421,6 @@ export default function ConvitesPage() {
               </select>
             </div>
 
-            <div style={{ fontSize: '0.78rem', color: '#8b8fa8', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '1.25rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px' }}>
-              <span>ℹ️</span>
-              <span>Você definirá o prazo de expiração do convite na próxima etapa.</span>
-            </div>
-
             <button type="submit" className="btn-primary" disabled={inviteLoading}>
               {inviteLoading ? <span className="spinner" /> : 'Enviar Convite'}
             </button>

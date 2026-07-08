@@ -187,7 +187,8 @@ export async function PUT(
         email: newEmail,
         role: newRole,
         status: 'pending',
-        expires_at: newExpiresAt
+        expires_at: newExpiresAt,
+        created_at: new Date().toISOString()
       })
       .eq('id', id)
 
@@ -197,7 +198,8 @@ export async function PUT(
         .update({
           email: newEmail,
           role: newRole,
-          status: 'pending'
+          status: 'pending',
+          created_at: new Date().toISOString()
         })
         .eq('id', id)
       updateError = fallbackUpdate
