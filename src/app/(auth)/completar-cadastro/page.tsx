@@ -53,14 +53,24 @@ export default function CompletarCadastroPage() {
       return
     }
 
-    // 2. Atualizar a tabela profiles com o nome completo
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ full_name: nome })
-      .eq('id', user.id)
+    // 2. Chamar a API do servidor para salvar o nome no perfil e marcar o convite como aceito
+    try {
+      const response = await fetch('/api/auth/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, nome })
+      })
 
-    if (profileError) {
-      console.error('Erro ao atualizar perfil:', profileError)
+      const data = await response.json()
+      if (!response.ok) {
+        setError(data.error || 'Erro ao salvar informações cadastrais.')
+        setLoading(false)
+        return
+      }
+    } catch {
+      setError('Erro de conexão.')
+      setLoading(false)
+      return
     }
 
     setSuccess(true)

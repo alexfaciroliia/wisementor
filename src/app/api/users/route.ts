@@ -69,10 +69,12 @@ export async function GET() {
       bannedMap[authUser.id] = authUser.banned_until || null
     }
 
-    // Buscar perfis do banco
+    // Buscar perfis do banco (apenas os que completaram o cadastro com nome)
     let profilesQuery = adminClient
       .from('profiles')
       .select('id, full_name, email, role, avatar_url, created_at, banned')
+      .neq('full_name', '')
+      .not('full_name', 'is', null)
       .order('full_name', { ascending: true })
 
     if (callerRole === 'administrador') {
