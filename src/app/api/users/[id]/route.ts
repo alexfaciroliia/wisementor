@@ -164,6 +164,18 @@ export async function PATCH(
       if (error) {
         return NextResponse.json({ error: `Erro ao bloquear usuário: ${error.message}` }, { status: 500 })
       }
+
+      // Forçar logout imediato de todas as sessões ativas
+      await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users/${targetUserId}/logout`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          }
+        }
+      )
     } else {
       const { error } = await adminClient.auth.admin.updateUserById(targetUserId, {
         ban_duration: 'none'
