@@ -81,6 +81,10 @@ export default function DashboardPage() {
   const [editUserError, setEditUserError] = useState('')
   const [editUserSuccess, setEditUserSuccess] = useState('')
 
+  // Estados do modal de confirmação de reenvio de convite
+  const [isResendConfirmModalOpen, setIsResendConfirmModalOpen] = useState(false)
+  const [inviteToResend, setInviteToResend] = useState<Invitation | null>(null)
+
 
   const supabase = createClient()
 
@@ -251,7 +255,15 @@ export default function DashboardPage() {
       return
     }
 
-    setInviteSuccess(`Convite enviado com sucesso para ${inviteEmail}!`)
+    const expirationDate = new Date(Date.now() + 48 * 60 * 60 * 1000)
+    const formattedDate = expirationDate.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    setInviteSuccess(`Convite enviado com sucesso para ${inviteEmail}! Válido até ${formattedDate}.`)
     setInviteEmail('')
     setInviteLoading(false)
 
@@ -441,6 +453,54 @@ export default function DashboardPage() {
     }, 1500)
 
     setEditInviteLoading(false)
+  }
+
+  // ── Ações de Reenvio Rápido de Convite ──
+  function openQuickResendConfirm(inv: Invitation) {
+    setInviteToResend(inv)
+    setEditInviteError('')
+    setEditInviteSuccess('')
+    setIsResendConfirmModalOpen(true)
+  }
+
+  async function confirmQuickResendInvite() {
+    if (!inviteToResend) return
+    setEditInviteLoading(true)
+    setEditInviteError('')
+    setEditInviteSuccess('')
+
+    try {
+      const response = await fetch(`/api/invites/${inviteToResend.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteToResend.email, role: inviteToResend.role })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setEditInviteError(data.error || 'Erro ao reenviar convite.')
+        setEditInviteLoading(false)
+        return
+      }
+
+      setEditInviteSuccess('Convite reenviado com sucesso! Link anterior anulado.')
+      
+      if (profile?.role) {
+        await reloadInvitations(profile.role)
+      }
+
+      setTimeout(() => {
+        setIsResendConfirmModalOpen(false)
+        setInviteToResend(null)
+        setEditInviteError('')
+        setEditInviteSuccess('')
+      }, 1500)
+    } catch {
+      setEditInviteError('Erro de conexão ao reenviar convite.')
+    } finally {
+      setEditInviteLoading(false)
+    }
   }
 
   // ── Ações de Gerenciamento de Usuários ──
@@ -746,6 +806,10 @@ export default function DashboardPage() {
                     </select>
                   </div>
 
+                  <div style={{ fontSize: '0.78rem', color: '#8b8fa8', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '1.25rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px' }}>
+                    <span>ℹ️</span>
+                    <span>Os convites enviados expiram automaticamente em <strong>48 horas</strong>.</span>
+                  </div>
 
                   <button type="submit" className="btn-primary" disabled={inviteLoading}>
                     {inviteLoading ? <span className="spinner" /> : 'Enviar Convite'}
@@ -769,7 +833,7 @@ export default function DashboardPage() {
                         <div>
                           <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{inv.email}</div>
                           <div style={{ fontSize: '0.78rem', color: '#8b8fa8', marginTop: '0.125rem' }}>
-                            Papel: <strong>{inv.role}</strong>
+                            Papel: <strong>{inv.role}</strong> &bull; Enviado em: <strong>{new Date(inv.created_at).toLocaleDateString('pt-BR')} {new Date(inv.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</strong>
                           </div>
                           {expirationText && displayStatus !== 'accepted' && (
                             <div style={{ fontSize: '0.7rem', color: displayStatus === 'expired' ? '#ef4444' : '#8b8fa8', marginTop: '0.25rem' }}>
@@ -779,15 +843,26 @@ export default function DashboardPage() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <div style={{ display: 'flex', gap: '0.375rem' }}>
-                            {/* Reenviar: disponível para pendentes e expirados */}
+                            {/* Reenviar rápida (Anula o link anterior): disponível para pendentes e expirados */}
+                            {(displayStatus === 'pending' || displayStatus === 'expired') && (
+                              <button 
+                                onClick={() => openQuickResendConfirm(inv)}
+                                className="profile-action-btn"
+                                style={{ width: '2rem', height: '2rem', padding: 0 }}
+                                title="Reenviar Convite (Anula o anterior)"
+                              >
+                                🔄
+                              </button>
+                            )}
+                            {/* Editar e Reenviar */}
                             {(displayStatus === 'pending' || displayStatus === 'expired') && (
                               <button 
                                 onClick={() => openEditInviteModal(inv)}
                                 className="profile-action-btn"
                                 style={{ width: '2rem', height: '2rem', padding: 0 }}
-                                title={displayStatus === 'expired' ? 'Reenviar Convite Expirado' : 'Editar e Reenviar'}
+                                title="Editar e Reenviar"
                               >
-                                {displayStatus === 'expired' ? '🔄' : '✏️'}
+                                ✏️
                               </button>
                             )}
                             {/* Excluir: disponível para todos os status */}
@@ -1388,6 +1463,66 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Reenvio de Convite */}
+      {isResendConfirmModalOpen && inviteToResend && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '420px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔄</div>
+            <h3 className="modal-title" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
+              Reenviar Convite
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.5', marginBottom: '1.75rem' }}>
+              Deseja realmente reenviar o convite para <strong>{inviteToResend.email}</strong>? 
+              O link enviado anteriormente será <strong>anulado permanentemente</strong>.
+            </p>
+            
+            {editInviteError && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                <span>⚠️</span>
+                <span>{editInviteError}</span>
+              </div>
+            )}
+
+            {editInviteSuccess && (
+              <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
+                <span>✅</span>
+                <span>{editInviteSuccess}</span>
+              </div>
+            )}
+
+            <div className="modal-actions" style={{ justifyContent: 'center', gap: '0.75rem' }}>
+              <button
+                onClick={() => {
+                  setIsResendConfirmModalOpen(false)
+                  setInviteToResend(null)
+                  setEditInviteError('')
+                  setEditInviteSuccess('')
+                }}
+                className="btn-secondary"
+                style={{ width: 'auto', padding: '0 1.5rem' }}
+                disabled={editInviteLoading}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmQuickResendInvite}
+                className="btn-primary"
+                style={{ 
+                  width: 'auto', 
+                  padding: '0 1.5rem', 
+                  marginTop: 0, 
+                  background: 'var(--primary)', 
+                  boxShadow: '0 4px 20px rgba(124, 58, 237, 0.35)' 
+                }}
+                disabled={editInviteLoading}
+              >
+                {editInviteLoading ? <span className="spinner" /> : 'Confirmar Reenvio'}
+              </button>
+            </div>
           </div>
         </div>
       )}
