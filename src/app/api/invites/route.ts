@@ -89,7 +89,10 @@ export async function POST(request: Request) {
 
     // 3. Salvar o convite na tabela de convites (validade de 48h)
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
-    const { error: dbError } = await userClient
+    let dbError: any = null
+
+    // Tentar inserir com expires_at; se a coluna não existir, tenta sem
+    const { error: insertError } = await userClient
       .from('invitations')
       .insert({
         email,
@@ -98,6 +101,21 @@ export async function POST(request: Request) {
         status: 'pending',
         expires_at: expiresAt
       })
+
+    if (insertError && insertError.message.includes('expires_at')) {
+      // Coluna expires_at ainda não existe — inserir sem ela
+      const { error: fallbackError } = await userClient
+        .from('invitations')
+        .insert({
+          email,
+          role,
+          invited_by: user.id,
+          status: 'pending'
+        })
+      dbError = fallbackError
+    } else {
+      dbError = insertError
+    }
 
     if (dbError) {
       if (dbError.message.includes('unique constraint')) {
