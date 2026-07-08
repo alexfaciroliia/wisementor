@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -26,6 +26,7 @@ interface Invitation {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const inviteEmailInputRef = useRef<HTMLInputElement>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [allUsers, setAllUsers] = useState<Profile[]>([])
@@ -105,6 +106,46 @@ export default function DashboardPage() {
     return `Expira em ${remainDays} dia${remainDays > 1 ? 's' : ''}`
   }
 
+  // Buscar convites de forma resiliente (funciona com ou sem a coluna expires_at no banco de dados)
+  async function reloadInvitations(userRole: string) {
+    if (userRole !== 'sistema' && userRole !== 'administrador') {
+      setInvitations([])
+      return
+    }
+
+    const query = supabase.from('invitations')
+    const selectWithExpires = 'id, email, role, status, created_at, expires_at'
+    const selectWithoutExpires = 'id, email, role, status, created_at'
+
+    let inviteQuery = query.select(selectWithExpires)
+    if (userRole === 'administrador') {
+      inviteQuery = inviteQuery.neq('role', 'sistema')
+    }
+    const { data, error } = await inviteQuery.order('created_at', { ascending: false })
+
+    if (error && error.message.includes('expires_at')) {
+      let fallbackQuery = query.select(selectWithoutExpires)
+      if (userRole === 'administrador') {
+        fallbackQuery = fallbackQuery.neq('role', 'sistema')
+      }
+      const { data: fallbackData } = await fallbackQuery.order('created_at', { ascending: false })
+      if (fallbackData) {
+        setInvitations(fallbackData as Invitation[])
+      }
+    } else if (data) {
+      setInvitations(data as Invitation[])
+    }
+  }
+
+  // Dar foco automático no campo de e-mail ao abrir a aba de convites
+  useEffect(() => {
+    if (activeTab === 'invites') {
+      setTimeout(() => {
+        inviteEmailInputRef.current?.focus()
+      }, 50)
+    }
+  }, [activeTab])
+
 
 
   useEffect(() => {
@@ -145,14 +186,7 @@ export default function DashboardPage() {
       // 3. Obter dados adicionais do banco
       if (loadedProfile.role === 'sistema') {
         // Sistema vê todos os convites e todos os usuários
-        const { data: inviteList } = await supabase
-          .from('invitations')
-          .select('id, email, role, status, created_at, expires_at')
-          .order('created_at', { ascending: false })
-
-        if (inviteList) {
-          setInvitations(inviteList as Invitation[])
-        }
+        await reloadInvitations(loadedProfile.role)
 
         const { data: usersList } = await supabase
           .from('profiles')
@@ -164,15 +198,7 @@ export default function DashboardPage() {
         }
       } else if (loadedProfile.role === 'administrador') {
         // Administrador vê convites e usuários, EXCETO nível 'sistema'
-        const { data: inviteList } = await supabase
-          .from('invitations')
-          .select('id, email, role, status, created_at, expires_at')
-          .neq('role', 'sistema')
-          .order('created_at', { ascending: false })
-
-        if (inviteList) {
-          setInvitations(inviteList as Invitation[])
-        }
+        await reloadInvitations(loadedProfile.role)
 
         const { data: usersList } = await supabase
           .from('profiles')
@@ -220,21 +246,8 @@ export default function DashboardPage() {
     setInviteLoading(false)
 
     // Recarregar lista de convites dependendo do papel
-    if (profile?.role === 'sistema') {
-      const { data: inviteList } = await supabase
-        .from('invitations')
-        .select('id, email, role, status, created_at, expires_at')
-        .order('created_at', { ascending: false })
-
-      if (inviteList) setInvitations(inviteList as Invitation[])
-    } else if (profile?.role === 'administrador') {
-      const { data: inviteList } = await supabase
-        .from('invitations')
-        .select('id, email, role, status, created_at, expires_at')
-        .neq('role', 'sistema')
-        .order('created_at', { ascending: false })
-
-      if (inviteList) setInvitations(inviteList as Invitation[])
+    if (profile?.role) {
+      await reloadInvitations(profile.role)
     }
   }
 
@@ -368,21 +381,8 @@ export default function DashboardPage() {
     }
 
     // Recarregar convites
-    if (profile?.role === 'sistema') {
-      const { data: inviteList } = await supabase
-        .from('invitations')
-        .select('id, email, role, status, created_at, expires_at')
-        .order('created_at', { ascending: false })
-
-      if (inviteList) setInvitations(inviteList as Invitation[])
-    } else if (profile?.role === 'administrador') {
-      const { data: inviteList } = await supabase
-        .from('invitations')
-        .select('id, email, role, status, created_at, expires_at')
-        .neq('role', 'sistema')
-        .order('created_at', { ascending: false })
-
-      if (inviteList) setInvitations(inviteList as Invitation[])
+    if (profile?.role) {
+      await reloadInvitations(profile.role)
     }
 
     setIsConfirmModalOpen(false)
@@ -422,21 +422,8 @@ export default function DashboardPage() {
     setEditInviteSuccess('Convite atualizado e enviado com sucesso!')
     
     // Recarregar convites
-    if (profile?.role === 'sistema') {
-      const { data: inviteList } = await supabase
-        .from('invitations')
-        .select('id, email, role, status, created_at, expires_at')
-        .order('created_at', { ascending: false })
-
-      if (inviteList) setInvitations(inviteList as Invitation[])
-    } else if (profile?.role === 'administrador') {
-      const { data: inviteList } = await supabase
-        .from('invitations')
-        .select('id, email, role, status, created_at, expires_at')
-        .neq('role', 'sistema')
-        .order('created_at', { ascending: false })
-
-      if (inviteList) setInvitations(inviteList as Invitation[])
+    if (profile?.role) {
+      await reloadInvitations(profile.role)
     }
 
     setTimeout(() => {
@@ -676,6 +663,7 @@ export default function DashboardPage() {
                   <div className="form-field">
                     <label className="form-label">E-mail do Convidado</label>
                     <input
+                      ref={inviteEmailInputRef}
                       type="email"
                       className="form-input"
                       placeholder="exemplo@email.com"
