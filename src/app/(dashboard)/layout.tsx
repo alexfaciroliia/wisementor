@@ -120,10 +120,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     loadData()
   }, [])
 
-  // Recarregar dados do perfil a cada navegação de rota
+  // Recarregar dados do perfil a cada navegação de rota + verificar se ainda está ativo
   useEffect(() => {
     if (profile) {
-      reloadProfile()
+      // Verificar se o usuário foi bloqueado (via admin check no servidor)
+      fetch('/api/auth/check')
+        .then(r => r.json())
+        .then(async data => {
+          if (data.banned) {
+            // Usuário bloqueado — forçar logout e redirecionar
+            await supabase.auth.signOut()
+            router.push('/login')
+            return
+          }
+          // Usuário válido — recarregar perfil normalmente
+          reloadProfile()
+        })
+        .catch(() => {
+          // Em caso de erro de rede, apenas recarregar perfil
+          reloadProfile()
+        })
     }
   }, [pathname])
 
