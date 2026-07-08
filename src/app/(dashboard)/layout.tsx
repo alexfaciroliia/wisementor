@@ -136,7 +136,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     loadData()
   }, [])
 
-  // Proteção de rotas dinâmicas a cada alteração do pathname
+  // Recarregar dados do perfil a cada navegação de rota
+  useEffect(() => {
+    if (profile) {
+      reloadProfile()
+    }
+  }, [pathname])
+
+  // Proteção de rotas dinâmicas a cada alteração do pathname ou do perfil
   useEffect(() => {
     if (profile && profile.role === 'operador') {
       if (pathname.includes('/convites') || pathname.includes('/usuarios')) {
@@ -206,10 +213,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .single()
 
     if (userProfile) {
-      setProfile({
+      const updatedProfile: Profile = {
         ...(userProfile as Profile),
         email: user.email || (userProfile as Profile).email
-      })
+      }
+      setProfile(updatedProfile)
+      // Recarregar coleções de acordo com o novo papel
+      await reloadInvitations(updatedProfile.role)
+      await reloadUsers(updatedProfile.role)
     }
   }
 
