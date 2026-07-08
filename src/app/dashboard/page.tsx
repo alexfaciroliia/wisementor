@@ -64,6 +64,11 @@ export default function DashboardPage() {
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState('')
 
+  // Estados do modal de confirmação / expiração customizada do convite
+  const [isInviteConfirmModalOpen, setIsInviteConfirmModalOpen] = useState(false)
+  const [inviteExpirationChoice, setInviteExpirationChoice] = useState<'24' | '48' | '72' | '168' | 'custom'>('48')
+  const [inviteExpirationCustomDate, setInviteExpirationCustomDate] = useState('')
+
   // Estados do modal de editar perfil
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [editName, setEditName] = useState('')
@@ -85,6 +90,8 @@ export default function DashboardPage() {
   const [editInviteLoading, setEditInviteLoading] = useState(false)
   const [editInviteError, setEditInviteError] = useState('')
   const [editInviteSuccess, setEditInviteSuccess] = useState('')
+  const [editInviteExpirationChoice, setEditInviteExpirationChoice] = useState<'24' | '48' | '72' | '168' | 'custom'>('48')
+  const [editInviteExpirationCustomDate, setEditInviteExpirationCustomDate] = useState('')
 
   // Estados do modal de confirmação moderna
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -259,16 +266,48 @@ export default function DashboardPage() {
     loadData()
   }, [router, supabase])
 
-  async function handleInvite(e: React.FormEvent) {
+  function handleInvite(e: React.FormEvent) {
     e.preventDefault()
+    setInviteError('')
+    setInviteSuccess('')
+
+    if (!inviteEmail) {
+      setInviteError('Por favor, informe o e-mail do convidado.')
+      return
+    }
+
+    const defaultDate = new Date(Date.now() + 48 * 60 * 60 * 1000)
+    const tzoffset = defaultDate.getTimezoneOffset() * 60000
+    const localISOTime = new Date(defaultDate.getTime() - tzoffset).toISOString().slice(0, 16)
+    
+    setInviteExpirationChoice('48')
+    setInviteExpirationCustomDate(localISOTime)
+    setIsInviteConfirmModalOpen(true)
+  }
+
+  async function confirmSendInvite() {
     setInviteLoading(true)
     setInviteError('')
     setInviteSuccess('')
 
+    let expiresAtISO: string | null = null
+
+    if (inviteExpirationChoice === 'custom') {
+      if (!inviteExpirationCustomDate) {
+        setInviteError('Por favor, defina a data de expiração personalizada.')
+        setInviteLoading(false)
+        return
+      }
+      expiresAtISO = new Date(inviteExpirationCustomDate).toISOString()
+    } else {
+      const hours = parseInt(inviteExpirationChoice, 10)
+      expiresAtISO = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+    }
+
     const response = await fetch('/api/invites', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresAt: expiresAtISO }),
     })
 
     const data = await response.json()
@@ -276,20 +315,21 @@ export default function DashboardPage() {
     if (!response.ok) {
       setInviteError(data.error || 'Erro ao enviar o convite.')
       setInviteLoading(false)
+      setIsInviteConfirmModalOpen(false)
       return
     }
 
-    const expirationDate = new Date(Date.now() + 48 * 60 * 60 * 1000)
-    const formattedDate = expirationDate.toLocaleString('pt-BR', {
+    const expDateFormatted = new Date(expiresAtISO).toLocaleString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
     })
-    setInviteSuccess(`Convite enviado com sucesso para ${inviteEmail}! Válido até ${formattedDate}.`)
+    setInviteSuccess(`Convite enviado com sucesso para ${inviteEmail}! Válido até ${expDateFormatted}.`)
     setInviteEmail('')
     setInviteLoading(false)
+    setIsInviteConfirmModalOpen(false)
 
     // Recarregar lista de convites dependendo do papel
     if (profile?.role) {
@@ -442,6 +482,13 @@ export default function DashboardPage() {
     setEditInviteRole(inv.role)
     setEditInviteError('')
     setEditInviteSuccess('')
+
+    const defaultDate = new Date(Date.now() + 48 * 60 * 60 * 1000)
+    const tzoffset = defaultDate.getTimezoneOffset() * 60000
+    const localISOTime = new Date(defaultDate.getTime() - tzoffset).toISOString().slice(0, 16)
+    setEditInviteExpirationChoice('48')
+    setEditInviteExpirationCustomDate(localISOTime)
+
     setIsInviteModalOpen(true)
   }
 
@@ -451,10 +498,24 @@ export default function DashboardPage() {
     setEditInviteError('')
     setEditInviteSuccess('')
 
+    let expiresAtISO: string | null = null
+
+    if (editInviteExpirationChoice === 'custom') {
+      if (!editInviteExpirationCustomDate) {
+        setEditInviteError('Por favor, defina a data de expiração personalizada.')
+        setEditInviteLoading(false)
+        return
+      }
+      expiresAtISO = new Date(editInviteExpirationCustomDate).toISOString()
+    } else {
+      const hours = parseInt(editInviteExpirationChoice, 10)
+      expiresAtISO = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+    }
+
     const response = await fetch(`/api/invites/${editInviteId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: editInviteEmail, role: editInviteRole })
+      body: JSON.stringify({ email: editInviteEmail, role: editInviteRole, expiresAt: expiresAtISO })
     })
 
     const data = await response.json()
@@ -832,7 +893,7 @@ export default function DashboardPage() {
 
                   <div style={{ fontSize: '0.78rem', color: '#8b8fa8', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '1.25rem', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px' }}>
                     <span>ℹ️</span>
-                    <span>Os convites enviados expiram automaticamente em <strong>48 horas</strong>.</span>
+                    <span>Você definirá o prazo de expiração do convite na próxima etapa.</span>
                   </div>
 
                   <button type="submit" className="btn-primary" disabled={inviteLoading}>
@@ -1292,6 +1353,35 @@ export default function DashboardPage() {
                 </select>
               </div>
 
+              <div className="form-field">
+                <label className="form-label">Validade do Convite</label>
+                <select
+                  value={editInviteExpirationChoice}
+                  onChange={(e) => setEditInviteExpirationChoice(e.target.value as any)}
+                  className="form-input"
+                  style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
+                >
+                  <option value="24">24 horas (1 dia)</option>
+                  <option value="48">48 horas (2 dias - Recomendado)</option>
+                  <option value="72">72 horas (3 dias)</option>
+                  <option value="168">7 dias (1 semana)</option>
+                  <option value="custom">Personalizado...</option>
+                </select>
+              </div>
+
+              {editInviteExpirationChoice === 'custom' && (
+                <div className="form-field">
+                  <label className="form-label">Data/Hora Limite de Expiração</label>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={editInviteExpirationCustomDate}
+                    onChange={(e) => setEditInviteExpirationCustomDate(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
               <div className="modal-actions">
                 <button
                   type="button"
@@ -1546,6 +1636,97 @@ export default function DashboardPage() {
               >
                 {editInviteLoading ? <span className="spinner" /> : 'Confirmar Reenvio'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Envio com Validade Personalizada */}
+      {isInviteConfirmModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '460px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Confirmar e Enviar Convite</h3>
+              <button 
+                onClick={() => {
+                  setIsInviteConfirmModalOpen(false)
+                  setInviteLoading(false)
+                }} 
+                className="modal-close"
+              >
+                &times;
+              </button>
+            </div>
+
+            {inviteError && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+                <span>⚠️</span>
+                <span>{inviteError}</span>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '1.25rem', padding: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.82rem', color: '#8b8fa8', marginBottom: '0.25rem' }}>E-mail de Destino</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)' }}>{inviteEmail}</div>
+              
+              <div style={{ fontSize: '0.82rem', color: '#8b8fa8', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Nível de Acesso (Papel)</div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 500, display: 'inline-block', padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', textTransform: 'capitalize' }}>
+                {inviteRole}
+              </div>
+            </div>
+
+            <div className="auth-form">
+              <div className="form-field">
+                <label className="form-label">Definir Validade do Convite</label>
+                <select
+                  value={inviteExpirationChoice}
+                  onChange={(e) => setInviteExpirationChoice(e.target.value as any)}
+                  className="form-input"
+                  style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
+                >
+                  <option value="24">24 horas (1 dia)</option>
+                  <option value="48">48 horas (2 dias - Sugerido)</option>
+                  <option value="72">72 horas (3 dias)</option>
+                  <option value="168">7 dias (1 semana)</option>
+                  <option value="custom">Personalizado...</option>
+                </select>
+              </div>
+
+              {inviteExpirationChoice === 'custom' && (
+                <div className="form-field">
+                  <label className="form-label">Data/Hora Limite de Expiração</label>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={inviteExpirationCustomDate}
+                    onChange={(e) => setInviteExpirationCustomDate(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="modal-actions" style={{ marginTop: '1.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInviteConfirmModalOpen(false)
+                    setInviteLoading(false)
+                  }}
+                  className="btn-secondary"
+                  disabled={inviteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSendInvite}
+                  className="btn-primary"
+                  style={{ marginTop: 0 }}
+                  disabled={inviteLoading}
+                >
+                  {inviteLoading ? <span className="spinner" /> : 'Confirmar e Enviar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

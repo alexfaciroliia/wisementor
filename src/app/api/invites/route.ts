@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies()
-    const { email, role } = await request.json()
+    const { email, role, expiresAt: customExpiresAt } = await request.json()
 
     if (!email || !role) {
       return NextResponse.json({ error: 'E-mail e papel são obrigatórios.' }, { status: 400 })
@@ -87,8 +87,8 @@ export async function POST(request: Request) {
       }
     )
 
-    // 3. Salvar o convite na tabela de convites (validade de 48h)
-    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    // 3. Salvar o convite na tabela de convites
+    const expiresAt = customExpiresAt || new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
     let dbError: any = null
 
     // Tentar inserir com expires_at; se a coluna não existir, tenta sem

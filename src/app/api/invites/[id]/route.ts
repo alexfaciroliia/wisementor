@@ -112,7 +112,7 @@ export async function PUT(
   try {
     const { id } = await params
     const cookieStore = await cookies()
-    const { email: newEmail, role: newRole } = await request.json()
+    const { email: newEmail, role: newRole, expiresAt: newExpiresAtBody } = await request.json()
 
     if (!newEmail || !newRole) {
       return NextResponse.json({ error: 'E-mail e papel são obrigatórios.' }, { status: 400 })
@@ -178,7 +178,7 @@ export async function PUT(
     }
 
     // 4. Atualizar a linha de convite no banco de dados
-    const newExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+    const newExpiresAt = newExpiresAtBody || new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
     let updateError: any = null
 
     const { error: tryUpdate } = await userClient
