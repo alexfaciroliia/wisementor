@@ -210,6 +210,9 @@ export async function PUT(
     }
 
     // 5. Enviar novo convite de e-mail (cria nova hash e token no Supabase)
+    let emailSent = true
+    let actionLink = null
+
     const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(newEmail, {
       redirectTo: `${new URL(request.url).origin}/auth/confirm`,
       data: {
@@ -218,10 +221,32 @@ export async function PUT(
     })
 
     if (inviteError) {
-      return NextResponse.json({ error: `Erro ao disparar convite: ${inviteError.message}` }, { status: 500 })
+      const errMsg = inviteError.message.toLowerCase()
+      if (errMsg.includes('rate limit') || errMsg.includes('limit exceeded') || errMsg.includes('smtp') || errMsg.includes('bad gateway') || errMsg.includes('service unavailable')) {
+        // Fallback: Gerar link de convite sem enviar e-mail
+        const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+          type: 'invite',
+          email: newEmail,
+          options: {
+            redirectTo: `${new URL(request.url).origin}/auth/confirm`,
+            data: {
+              role: newRole
+            }
+          }
+        })
+
+        if (linkError) {
+          return NextResponse.json({ error: `Erro ao gerar link de convite: ${linkError.message}` }, { status: 500 })
+        }
+
+        emailSent = false
+        actionLink = linkData?.properties?.action_link
+      } else {
+        return NextResponse.json({ error: `Erro ao disparar convite: ${inviteError.message}` }, { status: 500 })
+      }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, emailSent, actionLink })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Erro interno.' }, { status: 500 })
   }

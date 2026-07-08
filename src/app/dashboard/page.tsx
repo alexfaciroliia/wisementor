@@ -69,6 +69,10 @@ export default function DashboardPage() {
   const [inviteExpirationChoice, setInviteExpirationChoice] = useState<'24' | '48' | '72' | '168' | 'custom'>('48')
   const [inviteExpirationCustomDate, setInviteExpirationCustomDate] = useState('')
 
+  // Link gerado e status de envio (para fallback quando há rate limit no envio do e-mail)
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null)
+  const [inviteEmailSent, setInviteEmailSent] = useState(true)
+
   // Estados do modal de editar perfil
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [editName, setEditName] = useState('')
@@ -289,6 +293,8 @@ export default function DashboardPage() {
     setInviteLoading(true)
     setInviteError('')
     setInviteSuccess('')
+    setGeneratedLink(null)
+    setInviteEmailSent(true)
 
     let expiresAtISO: string | null = null
 
@@ -304,36 +310,52 @@ export default function DashboardPage() {
       expiresAtISO = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
     }
 
-    const response = await fetch('/api/invites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresAt: expiresAtISO }),
-    })
+    try {
+      const response = await fetch('/api/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresAt: expiresAtISO }),
+      })
 
-    const data = await response.json()
+      const data = await response.json()
 
-    if (!response.ok) {
-      setInviteError(data.error || 'Erro ao enviar o convite.')
+      if (!response.ok) {
+        setInviteError(data.error || 'Erro ao enviar o convite.')
+        setInviteLoading(false)
+        return
+      }
+
+      setInviteEmailSent(data.emailSent !== false)
+      setGeneratedLink(data.actionLink || null)
+
+      const expDateFormatted = new Date(expiresAtISO).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+
+      if (data.emailSent === false) {
+        setInviteSuccess(`Convite registrado para ${inviteEmail}, mas houve erro ao disparar o e-mail (limite excedido). Válido até ${expDateFormatted}.`)
+      } else {
+        setInviteSuccess(`Convite enviado por e-mail com sucesso para ${inviteEmail}! Válido até ${expDateFormatted}.`)
+        setInviteEmail('')
+      }
+
+      // Recarregar lista de convites dependendo do papel
+      if (profile?.role) {
+        await reloadInvitations(profile.role)
+      }
+
+      // Apenas fechar o modal se o e-mail foi enviado; se falhou, manter o modal aberto para poder copiar o link
+      if (data.emailSent !== false) {
+        setIsInviteConfirmModalOpen(false)
+      }
+    } catch {
+      setInviteError('Erro de conexão ao enviar convite.')
+    } finally {
       setInviteLoading(false)
-      setIsInviteConfirmModalOpen(false)
-      return
-    }
-
-    const expDateFormatted = new Date(expiresAtISO).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-    setInviteSuccess(`Convite enviado com sucesso para ${inviteEmail}! Válido até ${expDateFormatted}.`)
-    setInviteEmail('')
-    setInviteLoading(false)
-    setIsInviteConfirmModalOpen(false)
-
-    // Recarregar lista de convites dependendo do papel
-    if (profile?.role) {
-      await reloadInvitations(profile.role)
     }
   }
 
@@ -497,6 +519,8 @@ export default function DashboardPage() {
     setEditInviteLoading(true)
     setEditInviteError('')
     setEditInviteSuccess('')
+    setGeneratedLink(null)
+    setInviteEmailSent(true)
 
     let expiresAtISO: string | null = null
 
@@ -512,32 +536,45 @@ export default function DashboardPage() {
       expiresAtISO = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
     }
 
-    const response = await fetch(`/api/invites/${editInviteId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: editInviteEmail, role: editInviteRole, expiresAt: expiresAtISO })
-    })
+    try {
+      const response = await fetch(`/api/invites/${editInviteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: editInviteEmail, role: editInviteRole, expiresAt: expiresAtISO })
+      })
 
-    const data = await response.json()
+      const data = await response.json()
 
-    if (!response.ok) {
-      setEditInviteError(data.error || 'Erro ao atualizar e reenviar convite.')
+      if (!response.ok) {
+        setEditInviteError(data.error || 'Erro ao atualizar e reenviar convite.')
+        setEditInviteLoading(false)
+        return
+      }
+
+      setInviteEmailSent(data.emailSent !== false)
+      setGeneratedLink(data.actionLink || null)
+
+      if (data.emailSent === false) {
+        setEditInviteSuccess('Convite atualizado com sucesso (e-mail não enviado por limite excedido).')
+      } else {
+        setEditInviteSuccess('Convite atualizado e enviado por e-mail com sucesso!')
+      }
+      
+      // Recarregar convites
+      if (profile?.role) {
+        await reloadInvitations(profile.role)
+      }
+
+      if (data.emailSent !== false) {
+        setTimeout(() => {
+          setIsInviteModalOpen(false)
+        }, 1500)
+      }
+    } catch {
+      setEditInviteError('Erro de conexão ao atualizar convite.')
+    } finally {
       setEditInviteLoading(false)
-      return
     }
-
-    setEditInviteSuccess('Convite atualizado e enviado com sucesso!')
-    
-    // Recarregar convites
-    if (profile?.role) {
-      await reloadInvitations(profile.role)
-    }
-
-    setTimeout(() => {
-      setIsInviteModalOpen(false)
-    }, 1500)
-
-    setEditInviteLoading(false)
   }
 
   // ── Ações de Reenvio Rápido de Convite ──
@@ -553,6 +590,8 @@ export default function DashboardPage() {
     setEditInviteLoading(true)
     setEditInviteError('')
     setEditInviteSuccess('')
+    setGeneratedLink(null)
+    setInviteEmailSent(true)
 
     try {
       const response = await fetch(`/api/invites/${inviteToResend.id}`, {
@@ -569,18 +608,27 @@ export default function DashboardPage() {
         return
       }
 
-      setEditInviteSuccess('Convite reenviado com sucesso! Link anterior anulado.')
+      setInviteEmailSent(data.emailSent !== false)
+      setGeneratedLink(data.actionLink || null)
+
+      if (data.emailSent === false) {
+        setEditInviteSuccess('Convite registrado com sucesso (e-mail não enviado por limite excedido).')
+      } else {
+        setEditInviteSuccess('Convite reenviado por e-mail com sucesso! Link anterior anulado.')
+      }
       
       if (profile?.role) {
         await reloadInvitations(profile.role)
       }
 
-      setTimeout(() => {
-        setIsResendConfirmModalOpen(false)
-        setInviteToResend(null)
-        setEditInviteError('')
-        setEditInviteSuccess('')
-      }, 1500)
+      if (data.emailSent !== false) {
+        setTimeout(() => {
+          setIsResendConfirmModalOpen(false)
+          setInviteToResend(null)
+          setEditInviteError('')
+          setEditInviteSuccess('')
+        }, 1500)
+      }
     } catch {
       setEditInviteError('Erro de conexão ao reenviar convite.')
     } finally {
@@ -854,10 +902,40 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {inviteSuccess && (
-                  <div className="alert alert-success" style={{ marginBottom: '1rem' }}>
-                    <span>✅</span>
-                    <span>{inviteSuccess}</span>
+                 {inviteSuccess && (
+                  <div className="alert alert-success" style={{ marginBottom: '1rem', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>{inviteEmailSent ? '✅' : '⚠️'}</span>
+                      <span>{inviteSuccess}</span>
+                    </div>
+                    {!inviteEmailSent && generatedLink && (
+                      <div style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#8b8fa8', marginBottom: '0.375rem' }}>
+                          O limite de e-mails foi excedido. Envie o link de acesso manualmente:
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            readOnly
+                            value={generatedLink}
+                            className="form-input"
+                            style={{ fontSize: '0.8rem', padding: '0.375rem 0.5rem', background: 'rgba(255,255,255,0.03)' }}
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                          />
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            style={{ width: 'auto', padding: '0 0.75rem', fontSize: '0.8rem', margin: 0 }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(generatedLink)
+                              alert('Link copiado!')
+                            }}
+                          >
+                            Copiar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1665,69 +1743,124 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <div style={{ marginBottom: '1.25rem', padding: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.82rem', color: '#8b8fa8', marginBottom: '0.25rem' }}>E-mail de Destino</div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)' }}>{inviteEmail}</div>
-              
-              <div style={{ fontSize: '0.82rem', color: '#8b8fa8', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Nível de Acesso (Papel)</div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 500, display: 'inline-block', padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', textTransform: 'capitalize' }}>
-                {inviteRole}
-              </div>
-            </div>
-
-            <div className="auth-form">
-              <div className="form-field">
-                <label className="form-label">Definir Validade do Convite</label>
-                <select
-                  value={inviteExpirationChoice}
-                  onChange={(e) => setInviteExpirationChoice(e.target.value as any)}
-                  className="form-input"
-                  style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
-                >
-                  <option value="24">24 horas (1 dia)</option>
-                  <option value="48">48 horas (2 dias - Sugerido)</option>
-                  <option value="72">72 horas (3 dias)</option>
-                  <option value="168">7 dias (1 semana)</option>
-                  <option value="custom">Personalizado...</option>
-                </select>
-              </div>
-
-              {inviteExpirationChoice === 'custom' && (
-                <div className="form-field">
-                  <label className="form-label">Data/Hora Limite de Expiração</label>
-                  <input
-                    type="datetime-local"
-                    className="form-input"
-                    value={inviteExpirationCustomDate}
-                    onChange={(e) => setInviteExpirationCustomDate(e.target.value)}
-                    required
-                  />
+             {inviteSuccess ? (
+              <div className="auth-form">
+                <div className="alert alert-success" style={{ marginBottom: '1.5rem', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span>{inviteEmailSent ? '✅' : '⚠️'}</span>
+                    <span>{inviteSuccess}</span>
+                  </div>
+                  {!inviteEmailSent && generatedLink && (
+                    <div style={{ width: '100%', marginTop: '0.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#8b8fa8', marginBottom: '0.375rem' }}>
+                        O limite de e-mails foi excedido. Envie o link de acesso manualmente:
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                          type="text"
+                          readOnly
+                          value={generatedLink}
+                          className="form-input"
+                          style={{ fontSize: '0.8rem', padding: '0.375rem 0.5rem', background: 'rgba(255,255,255,0.03)' }}
+                          onClick={(e) => (e.target as HTMLInputElement).select()}
+                        />
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ width: 'auto', padding: '0 0.75rem', fontSize: '0.8rem', margin: 0 }}
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedLink)
+                            alert('Link copiado!')
+                          }}
+                        >
+                          Copiar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-
-              <div className="modal-actions" style={{ marginTop: '1.75rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsInviteConfirmModalOpen(false)
-                    setInviteLoading(false)
-                  }}
-                  className="btn-secondary"
-                  disabled={inviteLoading}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmSendInvite}
-                  className="btn-primary"
-                  style={{ marginTop: 0 }}
-                  disabled={inviteLoading}
-                >
-                  {inviteLoading ? <span className="spinner" /> : 'Confirmar e Enviar'}
-                </button>
+                <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInviteConfirmModalOpen(false)
+                      setInviteSuccess('')
+                      setGeneratedLink(null)
+                    }}
+                    className="btn-secondary"
+                    style={{ width: 'auto', padding: '0 1.5rem' }}
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '1.25rem', padding: '0.875rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.82rem', color: '#8b8fa8', marginBottom: '0.25rem' }}>E-mail de Destino</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text)' }}>{inviteEmail}</div>
+                  
+                  <div style={{ fontSize: '0.82rem', color: '#8b8fa8', marginTop: '0.75rem', marginBottom: '0.25rem' }}>Nível de Acesso (Papel)</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 500, display: 'inline-block', padding: '0.2rem 0.5rem', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', textTransform: 'capitalize' }}>
+                    {inviteRole}
+                  </div>
+                </div>
+
+                <div className="auth-form">
+                  <div className="form-field">
+                    <label className="form-label">Definir Validade do Convite</label>
+                    <select
+                      value={inviteExpirationChoice}
+                      onChange={(e) => setInviteExpirationChoice(e.target.value as any)}
+                      className="form-input"
+                      style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
+                    >
+                      <option value="24">24 horas (1 dia)</option>
+                      <option value="48">48 horas (2 dias - Sugerido)</option>
+                      <option value="72">72 horas (3 dias)</option>
+                      <option value="168">7 dias (1 semana)</option>
+                      <option value="custom">Personalizado...</option>
+                    </select>
+                  </div>
+
+                  {inviteExpirationChoice === 'custom' && (
+                    <div className="form-field">
+                      <label className="form-label">Data/Hora Limite de Expiração</label>
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        value={inviteExpirationCustomDate}
+                        onChange={(e) => setInviteExpirationCustomDate(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div className="modal-actions" style={{ marginTop: '1.75rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsInviteConfirmModalOpen(false)
+                        setInviteLoading(false)
+                      }}
+                      className="btn-secondary"
+                      disabled={inviteLoading}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmSendInvite}
+                      className="btn-primary"
+                      style={{ marginTop: 0 }}
+                      disabled={inviteLoading}
+                    >
+                      {inviteLoading ? <span className="spinner" /> : 'Confirmar e Enviar'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

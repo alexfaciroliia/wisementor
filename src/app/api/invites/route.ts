@@ -125,6 +125,9 @@ export async function POST(request: Request) {
     }
 
     // 4. Disparar o convite de autenticação do Supabase (envia o e-mail de convite oficial)
+    let emailSent = true
+    let actionLink = null
+
     const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${new URL(request.url).origin}/auth/confirm`,
       data: {
@@ -133,12 +136,36 @@ export async function POST(request: Request) {
     })
 
     if (inviteError) {
-      // Reverter inserção no banco se falhar
-      await userClient.from('invitations').delete().eq('email', email)
-      return NextResponse.json({ error: inviteError.message }, { status: 500 })
+      const errMsg = inviteError.message.toLowerCase()
+      if (errMsg.includes('rate limit') || errMsg.includes('limit exceeded') || errMsg.includes('smtp') || errMsg.includes('bad gateway') || errMsg.includes('service unavailable')) {
+        // Fallback: Gerar link de convite sem enviar e-mail
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'invite',
+          email: email,
+          options: {
+            redirectTo: `${new URL(request.url).origin}/auth/confirm`,
+            data: {
+              role: role
+            }
+          }
+        })
+
+        if (linkError) {
+          // Reverter inserção no banco se falhar
+          await userClient.from('invitations').delete().eq('email', email)
+          return NextResponse.json({ error: `Erro ao gerar link de convite: ${linkError.message}` }, { status: 500 })
+        }
+
+        emailSent = false
+        actionLink = linkData?.properties?.action_link
+      } else {
+        // Reverter inserção no banco se falhar
+        await userClient.from('invitations').delete().eq('email', email)
+        return NextResponse.json({ error: inviteError.message }, { status: 500 })
+      }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, emailSent, actionLink })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Erro interno do servidor.' }, { status: 500 })
   }
