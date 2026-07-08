@@ -31,6 +31,30 @@ export default function DashboardPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [allUsers, setAllUsers] = useState<Profile[]>([])
   const [activeTab, setActiveTab] = useState<'dashboard' | 'invites' | 'users' | 'settings'>('dashboard')
+
+  // Sincronizar aba com parâmetro URL na montagem do componente
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tabParam = params.get('tab')
+    const validTabs = ['dashboard', 'invites', 'users', 'settings']
+    if (tabParam && validTabs.includes(tabParam)) {
+      setActiveTab(tabParam as any)
+    }
+  }, [])
+
+  function changeTab(tab: 'dashboard' | 'invites' | 'users' | 'settings') {
+    setActiveTab(tab)
+    const params = new URLSearchParams(window.location.search)
+    if (tab === 'dashboard') {
+      params.delete('tab')
+    } else {
+      params.set('tab', tab)
+    }
+    const newSearch = params.toString()
+    const newUrl = `${window.location.pathname}${newSearch ? `?${newSearch}` : ''}`
+    window.history.replaceState(null, '', newUrl)
+  }
+
   const [loading, setLoading] = useState(true)
 
   // Estados do formulario de convite
@@ -667,7 +691,7 @@ export default function DashboardPage() {
         {/* Links do Menu */}
         <nav className="sidebar-menu">
           <button
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => changeTab('dashboard')}
             className={`menu-item ${activeTab === 'dashboard' ? 'active' : ''}`}
           >
             📊 Dashboard
@@ -675,7 +699,7 @@ export default function DashboardPage() {
           
           {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
             <button
-              onClick={() => setActiveTab('invites')}
+              onClick={() => changeTab('invites')}
               className={`menu-item ${activeTab === 'invites' ? 'active' : ''}`}
             >
               ✉️ Convites
@@ -684,7 +708,7 @@ export default function DashboardPage() {
 
           {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
             <button
-              onClick={() => setActiveTab('users')}
+              onClick={() => changeTab('users')}
               className={`menu-item ${activeTab === 'users' ? 'active' : ''}`}
             >
               👥 Usuários
@@ -692,7 +716,7 @@ export default function DashboardPage() {
           )}
 
           <button
-            onClick={() => setActiveTab('settings')}
+            onClick={() => changeTab('settings')}
             className={`menu-item ${activeTab === 'settings' ? 'active' : ''}`}
           >
             🛠️ Configurações
