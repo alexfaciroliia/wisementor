@@ -17,6 +17,7 @@ export default function CompletarCadastroPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [declined, setDeclined] = useState(false)
+  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false)
 
   async function handleCompletar(e: React.FormEvent) {
     e.preventDefault()
@@ -69,10 +70,7 @@ export default function CompletarCadastroPage() {
     }, 2000)
   }
 
-  async function handleRecusar() {
-    if (!confirm('Deseja realmente recusar este convite? Sua conta temporária será excluída permanentemente.')) {
-      return
-    }
+  async function confirmDecline() {
     setDeclineLoading(true)
     setError('')
     const supabase = createClient()
@@ -81,6 +79,7 @@ export default function CompletarCadastroPage() {
     if (!user) {
       setError('Não foi possível identificar o usuário.')
       setDeclineLoading(false)
+      setIsDeclineModalOpen(false)
       return
     }
 
@@ -95,162 +94,210 @@ export default function CompletarCadastroPage() {
       if (!response.ok) {
         setError(data.error || 'Erro ao recusar convite.')
         setDeclineLoading(false)
+        setIsDeclineModalOpen(false)
         return
       }
 
       await supabase.auth.signOut()
       setDeclined(true)
+      setIsDeclineModalOpen(false)
     } catch {
       setError('Erro de conexão.')
       setDeclineLoading(false)
+      setIsDeclineModalOpen(false)
     }
   }
 
   return (
-    <div className="auth-card">
-      {/* Logo */}
-      <div className="auth-logo">
-        <div className="auth-logo-icon">🎓</div>
-        <span className="auth-logo-name">WiseMentor</span>
-      </div>
-
-      {/* Cabeçalho */}
-      <div className="auth-header">
-        <h1 className="auth-title">Completar Cadastro</h1>
-        <p className="auth-subtitle">Configure sua senha e nome para acessar a plataforma.</p>
-      </div>
-
-      {declined ? (
-        <div className="alert alert-error" role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', marginBottom: 0 }}>
-          <span>❌</span>
-          <span>Você recusou o convite. Sua conta temporária foi removida e o convite foi anulado.</span>
+    <>
+      <div className="auth-card">
+        {/* Logo */}
+        <div className="auth-logo">
+          <div className="auth-logo-icon">🎓</div>
+          <span className="auth-logo-name">WiseMentor</span>
         </div>
-      ) : success ? (
-        <div className="alert alert-success" role="alert">
-          <span>✅</span>
-          <span>Cadastro concluído! Acessando a plataforma...</span>
+
+        {/* Cabeçalho */}
+        <div className="auth-header">
+          <h1 className="auth-title">Completar Cadastro</h1>
+          <p className="auth-subtitle">Configure sua senha e nome para acessar a plataforma.</p>
         </div>
-      ) : (
-        <>
-          {error && (
-            <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
-              <span>⚠️</span>
-              <span>{error}</span>
-            </div>
-          )}
 
-          <form className="auth-form" onSubmit={handleCompletar} noValidate>
-            <div className="form-field">
-              <label className="form-label" htmlFor="completar-nome">Nome completo</label>
-              <input
-                id="completar-nome"
-                type="text"
-                className="form-input"
-                placeholder="Seu nome"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
+        {declined ? (
+          <div className="alert alert-error" role="alert" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', marginBottom: 0 }}>
+            <span>❌</span>
+            <span>Você recusou o convite. Sua conta temporária foi removida e o convite foi anulado.</span>
+          </div>
+        ) : success ? (
+          <div className="alert alert-success" role="alert">
+            <span>✅</span>
+            <span>Cadastro concluído! Acessando a plataforma...</span>
+          </div>
+        ) : (
+          <>
+            {error && (
+              <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
+                <span>⚠️</span>
+                <span>{error}</span>
+              </div>
+            )}
 
-            <div className="form-field">
-              <label className="form-label" htmlFor="completar-password">Definir senha</label>
-              <div className="password-input-container">
+            <form className="auth-form" onSubmit={handleCompletar} noValidate>
+              <div className="form-field">
+                <label className="form-label" htmlFor="completar-nome">Nome completo</label>
                 <input
-                  id="completar-password"
-                  type={showPassword ? 'text' : 'password'}
-                  className="form-input form-input-password"
-                  placeholder="Mínimo 6 caracteres"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  id="completar-nome"
+                  type="text"
+                  className="form-input"
+                  placeholder="Seu nome"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
                   required
-                  autoComplete="new-password"
+                  autoFocus
                 />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="completar-password">Definir senha</label>
+                <div className="password-input-container">
+                  <input
+                    id="completar-password"
+                    type={showPassword ? 'text' : 'password'}
+                    className="form-input form-input-password"
+                    placeholder="Mínimo 6 caracteres"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.815 7.815 3 3m-3-3-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.43 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-field">
+                <label className="form-label" htmlFor="completar-confirm-password">Confirmar senha</label>
+                <div className="password-input-container">
+                  <input
+                    id="completar-confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    className="form-input form-input-password"
+                    placeholder="Repita a senha"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.815 7.815 3 3m-3-3-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.43 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <span className="form-hint">Use letras, números e símbolos para mais segurança.</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.875rem', marginTop: '1.75rem' }}>
                 <button
                   type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
+                  className="btn-secondary"
+                  onClick={() => setIsDeclineModalOpen(true)}
+                  style={{ flex: 1, border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', height: '3rem', marginTop: 0 }}
+                  disabled={loading || declineLoading}
                 >
-                  {showPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.815 7.815 3 3m-3-3-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
-                    </svg>
+                  Recusar Convite
+                </button>
+                <button
+                  type="submit"
+                  id="btn-completar"
+                  className="btn-primary"
+                  style={{ flex: 1.5, marginTop: 0, height: '3rem' }}
+                  disabled={loading || declineLoading}
+                >
+                  {loading ? (
+                    <>
+                      <span className="spinner" style={{ marginRight: '0.5rem' }} />
+                      Concluindo...
+                    </>
                   ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.43 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                    </svg>
+                    'Aceitar e Acessar'
                   )}
                 </button>
               </div>
-            </div>
+            </form>
+          </>
+        )}
+      </div>
 
-            <div className="form-field">
-              <label className="form-label" htmlFor="completar-confirm-password">Confirmar senha</label>
-              <div className="password-input-container">
-                <input
-                  id="completar-confirm-password"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  className="form-input form-input-password"
-                  placeholder="Repita a senha"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  tabIndex={-1}
-                >
-                  {showConfirmPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.815 7.815 3 3m-3-3-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: '20px', height: '20px' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.43 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              <span className="form-hint">Use letras, números e símbolos para mais segurança.</span>
+      {/* Modal de Confirmação de Recusa Customizado */}
+      {isDeclineModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '420px', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>
+              ❌
             </div>
-
-            <div style={{ display: 'flex', gap: '0.875rem', marginTop: '1.75rem' }}>
+            <h3 className="modal-title" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
+              Recusar Convite
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.5', marginBottom: '0.5rem' }}>
+              Deseja realmente recusar este convite? Sua conta temporária será excluída permanentemente e você perderá o acesso ao sistema.
+            </p>
+            <div className="modal-actions" style={{ justifyContent: 'center', gap: '0.75rem', marginTop: '1.75rem' }}>
               <button
                 type="button"
+                onClick={() => setIsDeclineModalOpen(false)}
                 className="btn-secondary"
-                onClick={handleRecusar}
-                style={{ flex: 1, border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444', height: '3rem', marginTop: 0 }}
-                disabled={loading || declineLoading}
+                style={{ width: 'auto', padding: '0 1.5rem', marginTop: 0 }}
+                disabled={declineLoading}
               >
-                {declineLoading ? <span className="spinner" /> : 'Recusar Convite'}
+                Cancelar
               </button>
               <button
-                type="submit"
-                id="btn-completar"
+                type="button"
+                onClick={confirmDecline}
                 className="btn-primary"
-                style={{ flex: 1.5, marginTop: 0, height: '3rem' }}
-                disabled={loading || declineLoading}
+                style={{ 
+                  width: 'auto', 
+                  padding: '0 1.5rem', 
+                  marginTop: 0, 
+                  background: '#ef4444', 
+                  boxShadow: '0 4px 20px rgba(239, 68, 68, 0.35)' 
+                }}
+                disabled={declineLoading}
               >
-                {loading ? (
-                  <>
-                    <span className="spinner" style={{ marginRight: '0.5rem' }} />
-                    Concluindo...
-                  </>
-                ) : (
-                  'Aceitar e Acessar'
-                )}
+                {declineLoading ? <span className="spinner" /> : 'Confirmar'}
               </button>
             </div>
-          </form>
-        </>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   )
 }
