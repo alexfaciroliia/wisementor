@@ -169,6 +169,56 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [profile?.id])
 
+  // Inscrição Realtime para atualizações da tabela de convites (apenas para administradores/sistema)
+  useEffect(() => {
+    if (!profile || (profile.role !== 'sistema' && profile.role !== 'administrador')) return
+
+    const channel = supabase
+      .channel('invitation-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invitations'
+        },
+        () => {
+          console.log('Convite alterado em tempo real. Recarregando convites...')
+          reloadInvitations(profile.role)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [profile?.role])
+
+  // Inscrição Realtime para atualizações da tabela de perfis de todos os usuários (apenas para administradores/sistema)
+  useEffect(() => {
+    if (!profile || (profile.role !== 'sistema' && profile.role !== 'administrador')) return
+
+    const channel = supabase
+      .channel('profiles-list-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles'
+        },
+        () => {
+          console.log('Perfis alterados em tempo real. Recarregando usuários...')
+          reloadUsers(profile.role)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [profile?.role])
+
   // Proteção de rotas dinâmicas a cada alteração do pathname ou do perfil
   useEffect(() => {
     if (profile && profile.role === 'operador') {

@@ -467,7 +467,7 @@ export default function ConvitesPage() {
                         <span>Papel: <strong style={{ color: '#c0c4e0' }}>{inv.role}</strong></span>
                         <span>•</span>
                         <span>Enviado em: {sendDate}</span>
-                        {expText && (
+                        {expText && displayStatus !== 'accepted' && (
                           <>
                             <span>•</span>
                             <span style={{ 
