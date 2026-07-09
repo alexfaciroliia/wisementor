@@ -15,11 +15,22 @@ export default function AuthConfirmPage() {
     const supabase = createClient()
 
     async function handleAuth() {
-      // 0. Se houver "code" (fluxo PKCE), redirecionar para o callback de API (/auth/callback)
       const searchParams = new URLSearchParams(window.location.search)
       const code = searchParams.get('code')
       const queryType = searchParams.get('type')
 
+      // Capturar erros do query params se existirem
+      let errorParam = searchParams.get('error') || ''
+      let errorDesc = searchParams.get('error_description') || searchParams.get('error_desc') || ''
+
+      console.log('AuthConfirmPage debug query:', {
+        code: !!code,
+        queryType,
+        errorParam,
+        errorDesc
+      })
+
+      // 0. Se houver "code" (fluxo PKCE), redirecionar para o callback de API (/auth/callback)
       if (code) {
         let next = '/completar-cadastro'
         if (queryType === 'recovery') {
@@ -36,6 +47,18 @@ export default function AuthConfirmPage() {
         const accessToken = params.get('access_token')
         const refreshToken = params.get('refresh_token')
         const type = params.get('type')
+        
+        // Também capturar erros do hash se existirem
+        errorParam = errorParam || params.get('error') || ''
+        errorDesc = errorDesc || params.get('error_description') || params.get('error_desc') || ''
+
+        console.log('AuthConfirmPage debug hash:', {
+          hasHash: true,
+          hasTokens: !!(accessToken && refreshToken),
+          type,
+          errorParam,
+          errorDesc
+        })
 
         if (accessToken && refreshToken) {
           const { error } = await supabase.auth.setSession({
@@ -55,6 +78,10 @@ export default function AuthConfirmPage() {
             // Tipo desconhecido mas sessão válida
             router.replace('/dashboard')
             return
+          } else {
+            console.error('setSession error:', error.message)
+            errorParam = errorParam || 'session_error'
+            errorDesc = errorDesc || error.message
           }
         }
       }
@@ -80,6 +107,10 @@ export default function AuthConfirmPage() {
           }
           router.replace('/dashboard')
           return
+        } else {
+          console.error('verifyOtp error:', error.message)
+          errorParam = errorParam || 'otp_error'
+          errorDesc = errorDesc || error.message
         }
       }
 
@@ -91,7 +122,9 @@ export default function AuthConfirmPage() {
       }
 
       // Nenhum token encontrado — convite inválido
-      router.replace('/auth/convite-invalido')
+      const redirectUrl = `/auth/convite-invalido?error=${encodeURIComponent(errorParam)}&desc=${encodeURIComponent(errorDesc)}`
+      console.log('Redirecting to invalid invite page:', redirectUrl)
+      router.replace(redirectUrl)
     }
 
     handleAuth()
