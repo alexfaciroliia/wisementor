@@ -68,14 +68,14 @@ export default function ConvitesPage() {
       const agoHours = Math.floor(agoMs / (1000 * 60 * 60))
       if (agoHours < 1) return 'Expirado há poucos minutos'
       if (agoHours < 24) return `Expirado há ${agoHours}h`
-      const agoDays = Math.floor(agoHours / 24)
+      const agoDays = Math.ceil(agoHours / 24)
       return `Expirado há ${agoDays} dia${agoDays > 1 ? 's' : ''}`
     }
 
     const remainHours = Math.floor(diffMs / (1000 * 60 * 60))
     if (remainHours < 1) return 'Expira em breve'
     if (remainHours < 24) return `Expira em ${remainHours}h`
-    const remainDays = Math.floor(remainHours / 24)
+    const remainDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
     return `Expira em ${remainDays} dia${remainDays > 1 ? 's' : ''}`
   }
 
