@@ -15,6 +15,20 @@ export default function AuthConfirmPage() {
     const supabase = createClient()
 
     async function handleAuth() {
+      // 0. Se houver "code" (fluxo PKCE), redirecionar para o callback de API (/auth/callback)
+      const searchParams = new URLSearchParams(window.location.search)
+      const code = searchParams.get('code')
+      const queryType = searchParams.get('type')
+
+      if (code) {
+        let next = '/completar-cadastro'
+        if (queryType === 'recovery') {
+          next = '/redefinir-senha'
+        }
+        router.replace(`/auth/callback?code=${code}&next=${next}`)
+        return
+      }
+
       // 1. Tentar ler o hash fragment (fluxo implícito do Supabase)
       const hash = window.location.hash
       if (hash) {
@@ -45,8 +59,7 @@ export default function AuthConfirmPage() {
         }
       }
 
-      // 2. Tentar ler query params (fluxo PKCE / token_hash)
-      const searchParams = new URLSearchParams(window.location.search)
+      // 2. Tentar ler query params (fluxo PKCE / token_hash anterior)
       const tokenHash = searchParams.get('token_hash')
       const type = searchParams.get('type') as 'invite' | 'signup' | 'recovery' | 'magiclink' | null
 
