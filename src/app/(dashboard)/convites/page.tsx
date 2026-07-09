@@ -50,8 +50,9 @@ export default function ConvitesPage() {
   }, [])
 
   // Helper: calcular status efetivo do convite
-  function getInviteDisplayStatus(inv: Invitation): 'accepted' | 'pending' | 'expired' {
+  function getInviteDisplayStatus(inv: Invitation): 'accepted' | 'pending' | 'expired' | 'revoked' {
     if (inv.status === 'accepted') return 'accepted'
+    if (inv.status === 'revoked') return 'revoked'
     if (inv.expires_at && new Date(inv.expires_at) < new Date()) return 'expired'
     return 'pending'
   }
@@ -518,16 +519,26 @@ export default function ConvitesPage() {
                         textTransform: 'capitalize',
                         background: displayStatus === 'accepted' 
                           ? 'rgba(16, 185, 129, 0.15)' 
-                          : displayStatus === 'expired' 
-                            ? 'rgba(239, 68, 68, 0.15)'
-                            : 'rgba(245, 158, 11, 0.15)',
+                          : displayStatus === 'revoked'
+                            ? 'rgba(107, 114, 128, 0.15)'
+                            : displayStatus === 'expired' 
+                              ? 'rgba(239, 68, 68, 0.15)'
+                              : 'rgba(245, 158, 11, 0.15)',
                         color: displayStatus === 'accepted' 
                           ? '#10b981' 
-                          : displayStatus === 'expired'
-                            ? '#f87171'
-                            : '#fbbf24'
+                          : displayStatus === 'revoked'
+                            ? '#9ca3af'
+                            : displayStatus === 'expired'
+                              ? '#f87171'
+                              : '#fbbf24'
                       }}>
-                        {displayStatus === 'accepted' ? 'Aceito' : displayStatus === 'expired' ? 'Expirado' : 'Pendente'}
+                        {displayStatus === 'accepted' 
+                          ? 'Aceito' 
+                          : displayStatus === 'revoked'
+                            ? 'Recusado'
+                            : displayStatus === 'expired'
+                              ? 'Expirado'
+                              : 'Pendente'}
                       </span>
                     </div>
                   </div>
