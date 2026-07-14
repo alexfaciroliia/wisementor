@@ -139,8 +139,16 @@ export default function ClientesPage() {
         .order('name', { ascending: true })
 
       if (error) {
-        // Se a tabela ainda não foi criada no Supabase (código 42P01), trata silenciosamente
-        if (error.code === '42P01') {
+        const isTableMissing = 
+          error.code === '42P01' || 
+          error.code === 'PGRST116' ||
+          (error.message && (
+            error.message.toLowerCase().includes('relation') ||
+            error.message.toLowerCase().includes('does not exist') ||
+            error.message.toLowerCase().includes('not found')
+          ))
+
+        if (isTableMissing) {
           setClients([])
           return
         }
