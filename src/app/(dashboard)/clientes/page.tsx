@@ -138,7 +138,14 @@ export default function ClientesPage() {
         .select('*')
         .order('name', { ascending: true })
 
-      if (error) throw error
+      if (error) {
+        // Se a tabela ainda não foi criada no Supabase (código 42P01), trata silenciosamente
+        if (error.code === '42P01') {
+          setClients([])
+          return
+        }
+        throw error
+      }
       setClients(data as ClientData[])
     } catch (err: any) {
       console.error('Erro ao buscar clientes:', err)
@@ -419,12 +426,12 @@ export default function ClientesPage() {
   return (
     <div>
       {/* Cabeçalho */}
-      <div className="content-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="content-header" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'flex-start' }}>
         <div>
           <h2 className="content-title">Clientes</h2>
           <p className="content-subtitle">Gerencie os clientes e contas parceiras vinculadas ao WiseMentor</p>
         </div>
-        <button onClick={openCreateModal} className="btn-primary" style={{ marginTop: 0, padding: '0.625rem 1.25rem', height: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <button onClick={openCreateModal} className="btn-primary" style={{ marginTop: 0, padding: '0.625rem 1.25rem', height: 'auto', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
           ➕ Novo Cliente
         </button>
       </div>
