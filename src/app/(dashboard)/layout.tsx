@@ -489,6 +489,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               📊 Dashboard
             </Link>
+
+            <Link
+              href="/clientes"
+              className={`menu-item ${pathname === '/clientes' ? 'active' : ''}`}
+            >
+              💼 Clientes
+            </Link>
             
             {(profile?.role === 'sistema' || profile?.role === 'administrador') && (
               <Link
