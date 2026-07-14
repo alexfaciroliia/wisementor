@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDashboard } from '../layout'
 import { createClient } from '@/lib/supabase/client'
 
@@ -10,7 +10,13 @@ interface ClientData {
   email: string | null
   phone: string | null
   document: string | null
-  address: string | null
+  cep: string | null
+  street: string | null
+  number: string | null
+  complement: string | null
+  neighborhood: string | null
+  city: string | null
+  state: string | null
   notes: string | null
   status: 'active' | 'inactive'
   created_by: string | null
@@ -18,9 +24,71 @@ interface ClientData {
   updated_at: string
 }
 
+// Funções de Validação de CPF e CNPJ
+function validateCPF(cpf: string): boolean {
+  cpf = cpf.replace(/[^\d]+/g, '')
+  if (cpf.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(cpf)) return false
+  let soma = 0
+  let resto
+  for (let i = 1; i <= 9; i++) {
+    soma = soma + parseInt(cpf.substring(i - 1, i)) * (11 - i)
+  }
+  resto = (soma * 10) % 11
+  if ((resto === 10) || (resto === 11)) resto = 0
+  if (resto !== parseInt(cpf.substring(9, 10))) return false
+  soma = 0
+  for (let i = 1; i <= 10; i++) {
+    soma = soma + parseInt(cpf.substring(i - 1, i)) * (12 - i)
+  }
+  resto = (soma * 10) % 11
+  if ((resto === 10) || (resto === 11)) resto = 0
+  if (resto !== parseInt(cpf.substring(10, 11))) return false
+  return true
+}
+
+function validateCNPJ(cnpj: string): boolean {
+  cnpj = cnpj.replace(/[^\d]+/g, '')
+  if (cnpj.length !== 14) return false
+  if (/^(\d)\1{13}$/.test(cnpj)) return false
+  let tamanho = cnpj.length - 2
+  let numeros = cnpj.substring(0, tamanho)
+  let digitos = cnpj.substring(tamanho)
+  let soma = 0
+  let pos = tamanho - 7
+  for (let i = tamanho; i >= 1; i--) {
+    soma += parseInt(numeros.charAt(tamanho - i)) * pos--
+    if (pos < 2) pos = 9
+  }
+  let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11)
+  if (resultado !== parseInt(digitos.charAt(0))) return false
+  tamanho = tamanho + 1
+  numeros = cnpj.substring(0, tamanho)
+  soma = 0
+  pos = tamanho - 7
+  for (let i = tamanho; i >= 1; i--) {
+    soma += parseInt(numeros.charAt(tamanho - i)) * pos--
+    if (pos < 2) pos = 9
+  }
+  resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11)
+  if (resultado !== parseInt(digitos.charAt(1))) return false
+  return true
+}
+
+function validateDocument(doc: string): boolean {
+  const cleanDoc = doc.replace(/[^\d]+/g, '')
+  if (!cleanDoc) return true // opcional
+  if (cleanDoc.length === 11) return validateCPF(cleanDoc)
+  if (cleanDoc.length === 14) return validateCNPJ(cleanDoc)
+  return false
+}
+
 export default function ClientesPage() {
   const { profile } = useDashboard()
   const supabase = createClient()
+  
+  // Referência para focar no campo Nome
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Estados dos clientes
   const [clients, setClients] = useState<ClientData[]>([])
@@ -42,10 +110,20 @@ export default function ClientesPage() {
   const [formEmail, setFormEmail] = useState('')
   const [formPhone, setFormPhone] = useState('')
   const [formDocument, setFormDocument] = useState('')
-  const [formAddress, setFormAddress] = useState('')
+  
+  // Campos de Endereço Detalhados
+  const [formCep, setFormCep] = useState('')
+  const [formStreet, setFormStreet] = useState('')
+  const [formNumber, setFormNumber] = useState('')
+  const [formComplement, setFormComplement] = useState('')
+  const [formNeighborhood, setFormNeighborhood] = useState('')
+  const [formCity, setFormCity] = useState('')
+  const [formState, setFormState] = useState('') // UF
+  
   const [formNotes, setFormNotes] = useState('')
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active')
   const [formLoading, setFormLoading] = useState(false)
+  const [cepLoading, setCepLoading] = useState(false)
 
   // Confirmação de Exclusão
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false)
@@ -60,10 +138,7 @@ export default function ClientesPage() {
         .select('*')
         .order('name', { ascending: true })
 
-      if (error) {
-        throw error
-      }
-
+      if (error) throw error
       setClients(data as ClientData[])
     } catch (err: any) {
       console.error('Erro ao buscar clientes:', err)
@@ -97,6 +172,16 @@ export default function ClientesPage() {
     }
   }, [])
 
+  // Foco no campo nome ao abrir o modal
+  useEffect(() => {
+    if (isModalOpen) {
+      const timer = setTimeout(() => {
+        nameInputRef.current?.focus()
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+  }, [isModalOpen])
+
   // Limpar mensagens de sucesso/erro após alguns segundos
   useEffect(() => {
     if (successMsg) {
@@ -112,6 +197,47 @@ export default function ClientesPage() {
     }
   }, [errorMsg])
 
+  // Handler do CEP que consulta a API ViaCEP
+  async function handleCepChange(val: string) {
+    const cleaned = val.replace(/\D/g, '')
+    
+    // Máscara 00000-000
+    let masked = cleaned
+    if (cleaned.length > 5) {
+      masked = `${cleaned.substring(0, 5)}-${cleaned.substring(5, 8)}`
+    }
+    setFormCep(masked.substring(0, 9))
+
+    // Se CEP tem 8 dígitos, fazemos a consulta
+    if (cleaned.length === 8) {
+      setCepLoading(true)
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cleaned}/json/`)
+        if (res.ok) {
+          const data = await res.json()
+          if (!data.erro) {
+            setFormStreet(data.logradouro || '')
+            setFormNeighborhood(data.bairro || '')
+            setFormCity(data.localidade || '')
+            setFormState(data.uf || '')
+            
+            // Focar o campo de Número automaticamente
+            setTimeout(() => {
+              const numInput = document.getElementById('formNumber') as HTMLInputElement
+              numInput?.focus()
+            }, 100)
+          } else {
+            setErrorMsg('CEP não localizado.')
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar CEP:', err)
+      } finally {
+        setCepLoading(false)
+      }
+    }
+  }
+
   // Abertura do Modal de Cadastro
   function openCreateModal() {
     setModalMode('create')
@@ -120,7 +246,13 @@ export default function ClientesPage() {
     setFormEmail('')
     setFormPhone('')
     setFormDocument('')
-    setFormAddress('')
+    setFormCep('')
+    setFormStreet('')
+    setFormNumber('')
+    setFormComplement('')
+    setFormNeighborhood('')
+    setFormCity('')
+    setFormState('')
     setFormNotes('')
     setFormStatus('active')
     setIsModalOpen(true)
@@ -134,7 +266,13 @@ export default function ClientesPage() {
     setFormEmail(client.email || '')
     setFormPhone(client.phone || '')
     setFormDocument(client.document || '')
-    setFormAddress(client.address || '')
+    setFormCep(client.cep || '')
+    setFormStreet(client.street || '')
+    setFormNumber(client.number || '')
+    setFormComplement(client.complement || '')
+    setFormNeighborhood(client.neighborhood || '')
+    setFormCity(client.city || '')
+    setFormState(client.state || '')
     setFormNotes(client.notes || '')
     setFormStatus(client.status)
     setIsModalOpen(true)
@@ -148,6 +286,14 @@ export default function ClientesPage() {
       return
     }
 
+    // Validação de CPF ou CNPJ caso o usuário digite um
+    if (formDocument.trim() !== '') {
+      if (!validateDocument(formDocument)) {
+        setErrorMsg('CPF ou CNPJ inválido. Por favor, verifique os dígitos.')
+        return
+      }
+    }
+
     setFormLoading(true)
 
     try {
@@ -159,7 +305,13 @@ export default function ClientesPage() {
             email: formEmail.trim() || null,
             phone: formPhone.trim() || null,
             document: formDocument.trim() || null,
-            address: formAddress.trim() || null,
+            cep: formCep.trim() || null,
+            street: formStreet.trim() || null,
+            number: formNumber.trim() || null,
+            complement: formComplement.trim() || null,
+            neighborhood: formNeighborhood.trim() || null,
+            city: formCity.trim() || null,
+            state: formState.trim() || null,
             notes: formNotes.trim() || null,
             status: formStatus,
             created_by: profile?.id || null
@@ -175,7 +327,13 @@ export default function ClientesPage() {
             email: formEmail.trim() || null,
             phone: formPhone.trim() || null,
             document: formDocument.trim() || null,
-            address: formAddress.trim() || null,
+            cep: formCep.trim() || null,
+            street: formStreet.trim() || null,
+            number: formNumber.trim() || null,
+            complement: formComplement.trim() || null,
+            neighborhood: formNeighborhood.trim() || null,
+            city: formCity.trim() || null,
+            state: formState.trim() || null,
             notes: formNotes.trim() || null,
             status: formStatus
           })
@@ -296,8 +454,6 @@ export default function ClientesPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ paddingLeft: '2.25rem' }}
           />
-          <span style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', pointerEvents: 'none' }}>
-          </span>
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -382,6 +538,13 @@ export default function ClientesPage() {
                   : 'CL'
                 const isActive = client.status === 'active'
 
+                // Formatação do Endereço Completo para exibição
+                const formattedAddress = [
+                  client.street && `${client.street}, ${client.number || 'S/N'}` + (client.complement ? ` - ${client.complement}` : ''),
+                  client.neighborhood,
+                  client.city && `${client.city}/${client.state || ''}`
+                ].filter(Boolean).join(' - ')
+
                 return (
                   <tr key={client.id} style={{ opacity: isActive ? 1 : 0.65, transition: 'opacity 0.2s' }}>
                     <td style={{ fontWeight: 600 }}>
@@ -391,9 +554,9 @@ export default function ClientesPage() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span>{client.name}</span>
-                          {client.address && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={client.address}>
-                              📍 {client.address}
+                          {formattedAddress && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={formattedAddress}>
+                              📍 {formattedAddress}
                             </span>
                           )}
                         </div>
@@ -406,7 +569,7 @@ export default function ClientesPage() {
                       <button 
                         onClick={() => toggleStatus(client)}
                         style={{ cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
-                        title={`Clique para ${isActive ? 'desativar' : 'ativar'} o cliente`}
+                        title={`Clique para alterar o status`}
                       >
                         {isActive ? (
                           <span style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', borderRadius: '6px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -455,7 +618,7 @@ export default function ClientesPage() {
       {/* Modal de Criar / Editar Cliente */}
       {isModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-card" style={{ maxWidth: '560px' }}>
+          <div className="modal-card" style={{ maxWidth: '600px' }}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {modalMode === 'create' ? '💼 Novo Cliente' : '✏️ Editar Cliente'}
@@ -473,6 +636,7 @@ export default function ClientesPage() {
                   <input
                     type="text"
                     className="form-input"
+                    ref={nameInputRef}
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
                     placeholder="Nome completo ou Razão Social"
@@ -487,7 +651,7 @@ export default function ClientesPage() {
                     className="form-input"
                     value={formDocument}
                     onChange={(e) => setFormDocument(e.target.value)}
-                    placeholder="Ex: 000.000.000-00 ou 00.000.000/0001-00"
+                    placeholder="Somente números ou formatado"
                   />
                 </div>
 
@@ -513,18 +677,96 @@ export default function ClientesPage() {
                   />
                 </div>
 
-                <div className="form-field" style={{ gridColumn: 'span 2' }}>
-                  <label className="form-label">Endereço Comercial</label>
+                {/* Bloco de Endereço Comercial */}
+                <div style={{ gridColumn: 'span 2', marginTop: '0.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent)' }}>🏠 Endereço do Cliente</span>
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">CEP {cepLoading && <span className="spinner" style={{ width: '12px', height: '12px', display: 'inline-block', marginLeft: '0.25rem' }} />}</label>
                   <input
                     type="text"
                     className="form-input"
-                    value={formAddress}
-                    onChange={(e) => setFormAddress(e.target.value)}
-                    placeholder="Rua, Número, Bairro, Cidade - UF"
+                    value={formCep}
+                    onChange={(e) => handleCepChange(e.target.value)}
+                    placeholder="Digite o CEP (Auto-busca)"
                   />
                 </div>
 
-                <div className="form-field" style={{ gridColumn: 'span 2' }}>
+                <div className="form-field">
+                  <label className="form-label">Rua</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formStreet}
+                    onChange={(e) => setFormStreet(e.target.value)}
+                    placeholder="Logradouro"
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Número</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    id="formNumber"
+                    value={formNumber}
+                    onChange={(e) => setFormNumber(e.target.value)}
+                    placeholder="Nº ou S/N"
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Complemento</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formComplement}
+                    onChange={(e) => setFormComplement(e.target.value)}
+                    placeholder="Ex: Bloco B, Apto 101"
+                  />
+                </div>
+
+                <div className="form-field">
+                  <label className="form-label">Bairro</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={formNeighborhood}
+                    onChange={(e) => setFormNeighborhood(e.target.value)}
+                    placeholder="Bairro"
+                  />
+                </div>
+
+                <div className="form-field">
+                  <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '0.5rem' }}>
+                    <div>
+                      <label className="form-label">Cidade</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={formCity}
+                        onChange={(e) => setFormCity(e.target.value)}
+                        placeholder="Cidade"
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">UF</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={formState}
+                        onChange={(e) => setFormState(e.target.value.toUpperCase())}
+                        maxLength={2}
+                        placeholder="UF"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fim Bloco de Endereço */}
+
+                <div className="form-field" style={{ gridColumn: 'span 2', marginTop: '0.5rem' }}>
                   <label className="form-label">Observações / Notas Privadas</label>
                   <textarea
                     className="form-input"
@@ -543,8 +785,8 @@ export default function ClientesPage() {
                     onChange={(e) => setFormStatus(e.target.value as 'active' | 'inactive')}
                     style={{ background: 'var(--bg-overlay)', cursor: 'pointer' }}
                   >
-                    <option value="active">Ativo (Permitir interações e vínculo)</option>
-                    <option value="inactive">Inativo (Bloquear novas ações)</option>
+                    <option value="active">Ativo</option>
+                    <option value="inactive">Inativo</option>
                   </select>
                 </div>
 

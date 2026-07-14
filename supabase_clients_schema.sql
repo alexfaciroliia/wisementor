@@ -1,5 +1,5 @@
 -- ====================================================
--- WiseMentor — Tabela de Clientes
+-- WiseMentor — Tabela de Clientes (Refinada)
 -- Cole e execute estas queries no SQL Editor do seu Supabase
 -- ====================================================
 
@@ -10,7 +10,13 @@ create table if not exists public.clients (
   email text,
   phone text,
   document text, -- CPF ou CNPJ
-  address text,
+  cep text,
+  street text,
+  number text,
+  complement text,
+  neighborhood text,
+  city text,
+  state text, -- UF
   notes text,
   status text not null default 'active' check (status in ('active', 'inactive')),
   created_by uuid references public.profiles(id) on delete set null,
