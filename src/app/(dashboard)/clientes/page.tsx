@@ -255,6 +255,8 @@ export default function ClientesPage() {
 
   // Abertura do Modal de Cadastro
   function openCreateModal() {
+    setErrorMsg('')
+    setSuccessMsg('')
     setModalMode('create')
     setSelectedClientId(null)
     setFormName('')
@@ -275,6 +277,8 @@ export default function ClientesPage() {
 
   // Abertura do Modal de Edição
   function openEditModal(client: ClientData) {
+    setErrorMsg('')
+    setSuccessMsg('')
     setModalMode('edit')
     setSelectedClientId(client.id)
     setFormName(client.name)
@@ -445,13 +449,13 @@ export default function ClientesPage() {
       </div>
 
       {/* Alertas */}
-      {successMsg && (
+      {!isModalOpen && successMsg && (
         <div className="alert alert-success" style={{ marginBottom: '1.5rem', animation: 'fadeIn 0.3s ease' }}>
           <span>✅</span>
           <span>{successMsg}</span>
         </div>
       )}
-      {errorMsg && (
+      {!isModalOpen && errorMsg && (
         <div className="alert alert-error" style={{ marginBottom: '1.5rem', animation: 'fadeIn 0.3s ease' }}>
           <span>⚠️</span>
           <span>{errorMsg}</span>
@@ -642,6 +646,13 @@ export default function ClientesPage() {
                 &times;
               </button>
             </div>
+
+            {errorMsg && (
+              <div className="alert alert-error" style={{ marginBottom: '1rem', animation: 'fadeIn 0.3s ease' }}>
+                <span>⚠️</span>
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="auth-form" noValidate>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
