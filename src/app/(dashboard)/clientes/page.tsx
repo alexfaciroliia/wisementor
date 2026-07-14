@@ -625,7 +625,7 @@ export default function ClientesPage() {
       {/* Modal de Criar / Editar Cliente */}
       {isModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-card" style={{ maxWidth: '600px' }}>
+          <div className="modal-card" style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {modalMode === 'create' ? '💼 Novo Cliente' : '✏️ Editar Cliente'}
