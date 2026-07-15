@@ -89,6 +89,8 @@ export default function ClientesPage() {
   
   // Referência para focar no campo Nome
   const nameInputRef = useRef<HTMLInputElement>(null)
+  // Referência para rolar o modal para o topo
+  const modalCardRef = useRef<HTMLDivElement>(null)
 
   // Estados dos clientes
   const [clients, setClients] = useState<ClientData[]>([])
@@ -211,6 +213,13 @@ export default function ClientesPage() {
       return () => clearTimeout(timer)
     }
   }, [errorMsg])
+
+  // Rolar modal para o topo se houver mensagem de erro
+  useEffect(() => {
+    if (errorMsg && isModalOpen && modalCardRef.current) {
+      modalCardRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [errorMsg, isModalOpen])
 
   // Handler do CEP que consulta a API ViaCEP
   async function handleCepChange(val: string) {
@@ -637,7 +646,7 @@ export default function ClientesPage() {
       {/* Modal de Criar / Editar Cliente */}
       {isModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-card" style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="modal-card" ref={modalCardRef} style={{ maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3 className="modal-title">
                 {modalMode === 'create' ? '💼 Novo Cliente' : '✏️ Editar Cliente'}
