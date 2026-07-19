@@ -34,17 +34,26 @@ export async function POST(req: Request) {
     pushLog('Buscando base de produtos (Fonte da Verdade) do banco...');
     let products = await sync.getProducts(clientId);
     if (products.length === 0) {
-      pushLog('Aviso: Base de dados de produtos do banco vazia. Utilizando base simulada padrão.');
-      // Fallback para mock local
-      products = [
-        { client_id: clientId, supplier: 'AN', sku_upseller: 'AN-SAIDA-CALCA FAIXA', description: 'Calça Feminina Saída De Praia Fita', color: ['Azul Bebe', 'Bege'], size: ['M'] },
-        { client_id: clientId, supplier: 'AN', sku_upseller: 'AN-CACHARREL', description: 'Blusa Cacharrel Feminina Trico', color: ['Preto', 'Branco'], size: ['G'] },
-        { client_id: clientId, supplier: 'GI', sku_upseller: 'REVERSE', description: 'Macacão Biquíni Reverse', color: ['Preto'], size: ['M'] },
-        { client_id: clientId, supplier: 'GI', sku_upseller: 'MULA MANCA', description: 'Vestido Feminino Mula Manca', color: ['Preto'], size: ['P'] }
-      ];
-    } else {
-      pushLog(`Base de produtos carregada: ${products.length} itens encontrados.`);
+      pushLog('[ERRO] A Base de Produtos (Fonte da Verdade) do WiseMentor está vazia para este cliente.');
+      pushLog('[SISTEMA] Execução do robô cancelada. Por favor, acesse a aba "Base de Produtos" para carregar a planilha de SKUs antes de rodar o robô.');
+      
+      const sessionId = await sync.createSession(clientId).catch(() => null);
+      if (sessionId) {
+        await sync.updateSession(sessionId, {
+          status: 'failed',
+          error_message: 'Base de produtos do WiseMentor vazia.',
+          logs
+        }).catch(() => null);
+      }
+      
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Base de produtos vazia. Por favor, carregue os SKUs na aba "Base de Produtos" antes de executar a automação.', 
+        logs 
+      });
     }
+
+    pushLog(`Base de produtos carregada: ${products.length} itens encontrados.`);
 
     // Inicializa o Driver RPA
     const driver = new UpSellerDriver(clientId, (msg) => {
