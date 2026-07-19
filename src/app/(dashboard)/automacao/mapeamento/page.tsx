@@ -48,6 +48,16 @@ export default function AutomationMapping() {
     loadClients();
   }, []);
 
+  // Recuperar cliente selecionado anteriormente do localStorage no lado do cliente
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('wisementor_automation_client_id');
+      if (saved) {
+        setSelectedClientId(saved);
+      }
+    }
+  }, []);
+
   // 2. Carregar Anúncios e Base de Produtos
   useEffect(() => {
     if (!selectedClientId) return;
@@ -203,11 +213,19 @@ export default function AutomationMapping() {
           <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>CLIENTE ATIVO</label>
           <select
             value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
+            onChange={(e) => {
+              const cid = e.target.value;
+              setSelectedClientId(cid);
+              if (cid) {
+                localStorage.setItem('wisementor_automation_client_id', cid);
+              } else {
+                localStorage.removeItem('wisementor_automation_client_id');
+              }
+            }}
             className="form-input"
             style={{ width: '250px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', padding: '0.5rem' }}
           >
-            <option value="">-- Selecione um Cliente --</option>
+            <option value="">Selecione um Cliente</option>
             {clients.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}

@@ -61,6 +61,16 @@ export default function AutomationDashboard() {
     loadClients();
   }, []);
 
+  // Recuperar cliente selecionado anteriormente do localStorage no lado do cliente
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('wisementor_automation_client_id');
+      if (saved) {
+        setSelectedClientId(saved);
+      }
+    }
+  }, []);
+
   // 2. Carregar sessões de logs recentes para o cliente selecionado
   useEffect(() => {
     if (!selectedClientId) return;
@@ -178,11 +188,19 @@ export default function AutomationDashboard() {
           {clients.length > 0 ? (
             <select
               value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
+              onChange={(e) => {
+                const cid = e.target.value;
+                setSelectedClientId(cid);
+                if (cid) {
+                  localStorage.setItem('wisementor_automation_client_id', cid);
+                } else {
+                  localStorage.removeItem('wisementor_automation_client_id');
+                }
+              }}
               className="form-input"
               style={{ width: '250px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', padding: '0.5rem' }}
             >
-              <option value="">-- Selecione um Cliente --</option>
+              <option value="">Selecione um Cliente</option>
               {clients.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
