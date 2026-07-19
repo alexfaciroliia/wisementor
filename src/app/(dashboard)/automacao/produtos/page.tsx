@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { useDashboard } from '../layout';
+import { useDashboard } from '../../layout';
 import { DbProduct } from '@/lib/automation/db-sync';
 
 export default function AutomationProducts() {

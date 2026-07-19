@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { useDashboard } from '../layout';
+import { useDashboard } from '../../layout';
 
 export default function AutomationSettings() {
   const { profile } = useDashboard();

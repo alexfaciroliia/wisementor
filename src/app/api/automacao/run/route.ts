@@ -37,10 +37,10 @@ export async function POST(req: Request) {
       pushLog('Aviso: Base de dados de produtos do banco vazia. Utilizando base simulada padrão.');
       // Fallback para mock local
       products = [
-        { supplier: 'AN', sku_upseller: 'AN-SAIDA-CALCA FAIXA', description: 'Calça Feminina Saída De Praia Fita', color: ['Azul Bebe', 'Bege'], size: ['M'] },
-        { supplier: 'AN', sku_upseller: 'AN-CACHARREL', description: 'Blusa Cacharrel Feminina Trico', color: ['Preto', 'Branco'], size: ['G'] },
-        { supplier: 'GI', sku_upseller: 'REVERSE', description: 'Macacão Biquíni Reverse', color: ['Preto'], size: ['M'] },
-        { supplier: 'GI', sku_upseller: 'MULA MANCA', description: 'Vestido Feminino Mula Manca', color: ['Preto'], size: ['P'] }
+        { client_id: clientId, supplier: 'AN', sku_upseller: 'AN-SAIDA-CALCA FAIXA', description: 'Calça Feminina Saída De Praia Fita', color: ['Azul Bebe', 'Bege'], size: ['M'] },
+        { client_id: clientId, supplier: 'AN', sku_upseller: 'AN-CACHARREL', description: 'Blusa Cacharrel Feminina Trico', color: ['Preto', 'Branco'], size: ['G'] },
+        { client_id: clientId, supplier: 'GI', sku_upseller: 'REVERSE', description: 'Macacão Biquíni Reverse', color: ['Preto'], size: ['M'] },
+        { client_id: clientId, supplier: 'GI', sku_upseller: 'MULA MANCA', description: 'Vestido Feminino Mula Manca', color: ['Preto'], size: ['P'] }
       ];
     } else {
       pushLog(`Base de produtos carregada: ${products.length} itens encontrados.`);

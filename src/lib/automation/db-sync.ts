@@ -30,7 +30,7 @@ export interface DbListing {
   mapped_sku?: string;
   status: 'unmapped' | 'mapped' | 'needs_review';
   detected_type?: 'simple' | 'kit' | 'unknown';
-  review_notes?: string;
+  review_notes?: string | null;
 }
 
 export interface DbKit {
