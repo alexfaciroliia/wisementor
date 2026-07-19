@@ -243,7 +243,10 @@ export default function AutomationDashboard() {
             {/* Controle e Execução */}
             <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600 }}>Execução do RPA de Conciliação</h3>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  Execução do Robô de Automação 
+                  <span title="RPA (Robotic Process Automation) é a tecnologia de robô de software que automatiza tarefas repetitivas, imitando as ações de clique e digitação humanas no navegador." style={{ cursor: 'help', fontSize: '0.8rem', color: '#94a3b8', borderBottom: '1px dotted #64748b' }}>(RPA)</span>
+                </h3>
                 <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   Inicia a varredura no UpSeller, busca anúncios não mapeados e realiza a reconciliação visual de SKUs simples e compostos.
                 </p>
@@ -259,7 +262,7 @@ export default function AutomationDashboard() {
                     <span className="spinner" style={{ width: '16px', height: '16px' }} /> Executando...
                   </>
                 ) : (
-                  '⚡ Executar RPA Agora'
+                  '⚡ Executar Robô Agora'
                 )}
               </button>
             </div>

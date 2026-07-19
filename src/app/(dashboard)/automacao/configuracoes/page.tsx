@@ -149,7 +149,7 @@ export default function AutomationSettings() {
             ⚙️ Configurações da Automação UpSeller
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Cadastre credenciais e gerencie chaves de cookies de login para o robô RPA.
+            Cadastre credenciais e gerencie chaves de cookies de login para o robô de automação.
           </p>
         </div>
 
@@ -205,7 +205,10 @@ export default function AutomationSettings() {
       ) : (
         /* Formulário de Configuração */
         <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '2rem', maxWidth: '800px' }}>
-          <h3 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem', fontWeight: 600 }}>Parâmetros do Robô UpSeller RPA</h3>
+          <h3 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            Parâmetros do Robô UpSeller 
+            <span title="RPA (Robotic Process Automation) é a tecnologia de robô de software que automatiza tarefas repetitivas, imitando as ações de clique e digitação humanas no navegador." style={{ cursor: 'help', fontSize: '0.85rem', color: '#94a3b8', borderBottom: '1px dotted #64748b' }}>(RPA)</span>
+          </h3>
 
           {message.text && (
             <div 
@@ -316,7 +319,7 @@ export default function AutomationSettings() {
                 className="btn-secondary" 
                 style={{ padding: '0.75rem 1.5rem' }}
               >
-                🔌 Testar Conexão RPA
+                🔌 Testar Conexão do Robô
               </button>
             </div>
 
