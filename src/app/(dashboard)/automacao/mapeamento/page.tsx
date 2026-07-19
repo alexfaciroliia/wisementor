@@ -204,7 +204,7 @@ export default function AutomationMapping() {
             🔗 Gerenciador de Mapeamentos
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Acompanhe anúncios não mapeados no marketplace e resolva conflitos do motor RPA.
+            Gerencie anúncios não mapeados
           </p>
         </div>
 
@@ -242,7 +242,7 @@ export default function AutomationMapping() {
           🔗 Anúncios e Mapeamento
         </Link>
         <Link href="/automacao/produtos" style={{ padding: '0.5rem 1rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>
-          📦 Base de Produtos (Truth)
+          📦 Base de Produtos
         </Link>
         <Link href="/automacao/configuracoes" style={{ padding: '0.5rem 1rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>
           ⚙️ Credenciais UpSeller
