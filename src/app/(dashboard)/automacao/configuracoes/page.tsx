@@ -14,8 +14,6 @@ export default function AutomationSettings() {
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [cron, setCron] = useState('0 2 * * *');
-  const [isActive, setIsActive] = useState(true);
   const [cookiesJson, setCookiesJson] = useState('');
 
   const [loading, setLoading] = useState(true);
@@ -23,8 +21,6 @@ export default function AutomationSettings() {
   const [message, setMessage] = useState({ type: '', text: '' });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedHour, setSelectedHour] = useState('02:00');
-  const [showAdvancedCron, setShowAdvancedCron] = useState(false);
   const [hasExistingConfig, setHasExistingConfig] = useState(false);
 
   // 1. Carregar Clientes
@@ -71,31 +67,12 @@ export default function AutomationSettings() {
         const s = data.settings;
         setEmail(s.upseller_email || '');
         setPassword(''); // Senhas nunca são expostas de volta por segurança
-        
-        const loadedCron = s.run_schedule || '0 2 * * *';
-        setCron(loadedCron);
-        
-        // Tenta decodificar cron simples diário (formato: "0 H * * *")
-        const match = loadedCron.trim().match(/^0\s+(\d+)\s+\*\s+\*\s+\*$/);
-        if (match) {
-          const hour = match[1].padStart(2, '0');
-          setSelectedHour(`${hour}:00`);
-          setShowAdvancedCron(false);
-        } else {
-          setShowAdvancedCron(true);
-        }
-
-        setIsActive(s.is_active ?? true);
         setCookiesJson(s.session_cookies ? JSON.stringify(s.session_cookies, null, 2) : '');
         setHasExistingConfig(true);
       } else {
         // Limpa campos para novo cadastro
         setEmail('');
         setPassword('');
-        setCron('0 2 * * *');
-        setSelectedHour('02:00');
-        setShowAdvancedCron(false);
-        setIsActive(true);
         setCookiesJson('');
         setHasExistingConfig(false);
       }
@@ -126,12 +103,6 @@ export default function AutomationSettings() {
       }
     }
 
-    let finalCron = cron;
-    if (!showAdvancedCron) {
-      const hour = parseInt(selectedHour.split(':')[0], 10);
-      finalCron = `0 ${hour} * * *`;
-    }
-
     try {
       const response = await fetch('/api/automacao/settings', {
         method: 'POST',
@@ -140,8 +111,8 @@ export default function AutomationSettings() {
           clientId: selectedClientId,
           upseller_email: email,
           upseller_password: password || undefined, // Apenas atualiza se digitado
-          run_schedule: finalCron,
-          is_active: isActive,
+          run_schedule: 'manual',
+          is_active: false,
           session_cookies: parsedCookies
         })
       });
@@ -303,83 +274,6 @@ export default function AutomationSettings() {
                     {showPassword ? '🙈' : '👁️'}
                   </button>
                 </div>
-              </div>
-
-            </div>
-
-            {/* Agendamento de Automação */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-              
-              <div className="form-field">
-                {!showAdvancedCron ? (
-                  <>
-                    <label className="form-label">Horário da Varredura Diária</label>
-                    <select
-                      value={selectedHour}
-                      onChange={(e) => setSelectedHour(e.target.value)}
-                      className="form-input"
-                      style={{ background: '#0d1117', color: '#fff', padding: '0.55rem' }}
-                    >
-                      {Array.from({ length: 24 }, (_, i) => {
-                        const h = i.toString().padStart(2, '0');
-                        const time = `${h}:00`;
-                        let suffix = '';
-                        if (i === 0) suffix = ' (Meia-noite)';
-                        else if (i === 12) suffix = ' (Meio-dia)';
-                        else if (i === 2) suffix = ' (Recomendado)';
-                        else if (i >= 1 && i <= 11) suffix = ' da manhã';
-                        else if (i >= 13 && i <= 18) suffix = ' da tarde';
-                        else suffix = ' da noite';
-                        return (
-                          <option key={time} value={time}>
-                            {time}{suffix}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
-                      Escolha o horário em que o robô fará a varredura automática das vendas no UpSeller.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <label className="form-label">Agendamento de Varredura (Expressão Cron)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="EX: 0 2 * * * (Todo dia às 02h)"
-                      value={cron}
-                      onChange={(e) => setCron(e.target.value)}
-                      required
-                      style={{ background: '#0d1117', color: '#fff' }}
-                    />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
-                      Expressão cron avançada de 5 campos (Minuto Hora Dia-do-Mês Mês Dia-da-Semana).
-                    </span>
-                  </>
-                )}
-                
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', marginTop: '0.65rem', fontSize: '0.75rem', color: 'var(--primary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={showAdvancedCron}
-                    onChange={(e) => setShowAdvancedCron(e.target.checked)}
-                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-                  />
-                  <span>⚙️ Configuração avançada de execução (Expressão CRON)</span>
-                </label>
-              </div>
-
-              <div className="form-field" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '0.75rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  <span>Habilitar automações diárias para este cliente</span>
-                </label>
               </div>
 
             </div>
