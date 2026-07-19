@@ -66,9 +66,7 @@ export async function GET(req: Request) {
     const dbProducts = await sync.getProducts(clientId);
 
     if (dbProducts.length === 0) {
-      // Se não houver produtos no banco, retornamos os mocks vinculando ao clientId solicitado
-      const clientMocked = mockProducts.map(p => ({ ...p, client_id: clientId }));
-      return NextResponse.json({ products: clientMocked, source: 'mock' });
+      return NextResponse.json({ products: [], source: 'db' });
     }
 
     return NextResponse.json({ products: dbProducts, source: 'db' });

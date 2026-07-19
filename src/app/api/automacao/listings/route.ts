@@ -68,12 +68,7 @@ export async function GET(req: Request) {
     const dbListings = await sync.getListings(clientId, status);
 
     if (dbListings.length === 0) {
-      // Retorna mocks filtrando por status se solicitado
-      let clientMocks = mockListings.map(l => ({ ...l, client_id: clientId }));
-      if (status) {
-        clientMocks = clientMocks.filter(l => l.status === status);
-      }
-      return NextResponse.json({ listings: clientMocks, source: 'mock' });
+      return NextResponse.json({ listings: [], source: 'db' });
     }
 
     return NextResponse.json({ listings: dbListings, source: 'db' });
