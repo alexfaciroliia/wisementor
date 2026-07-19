@@ -55,9 +55,6 @@ export default function AutomationDashboard() {
       
       if (!error && data) {
         setClients(data);
-        if (data.length > 0) {
-          setSelectedClientId(data[0].id);
-        }
       }
       setLoading(false);
     }
@@ -185,6 +182,7 @@ export default function AutomationDashboard() {
               className="form-input"
               style={{ width: '250px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', padding: '0.5rem' }}
             >
+              <option value="">-- Selecione um Cliente --</option>
               {clients.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -211,191 +209,203 @@ export default function AutomationDashboard() {
         </Link>
       </nav>
 
-      {/* Grid Superior: Painel de Controle e Status */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.5rem', marginBottom: '2rem' }}>
-        
-        {/* Controle e Execução */}
-        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600 }}>Execução do RPA de Conciliação</h3>
-            <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              Inicia a varredura no UpSeller, busca anúncios não mapeados e realiza a reconciliação visual de SKUs simples e compostos.
-            </p>
-          </div>
-          <button
-            onClick={handleStartAutomation}
-            disabled={running || !selectedClientId}
-            className={running ? 'btn-secondary' : 'btn-primary'}
-            style={{ minWidth: '180px', padding: '0.75rem 1.5rem', fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: running ? 'not-allowed' : 'pointer' }}
-          >
-            {running ? (
-              <>
-                <span className="spinner" style={{ width: '16px', height: '16px' }} /> Executando...
-              </>
-            ) : (
-              '⚡ Executar RPA Agora'
-            )}
-          </button>
+      {!selectedClientId ? (
+        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1.5rem' }}>🤖</span>
+          <h3 style={{ color: '#fff', fontSize: '1.35rem', fontWeight: 600, margin: 0 }}>Nenhum Cliente Selecionado</h3>
+          <p style={{ marginTop: '0.75rem', fontSize: '0.95rem', maxWidth: '600px', margin: '0.75rem auto 0', lineHeight: '1.6' }}>
+            Por favor, selecione um cliente ativo no menu <strong>Cliente Ativo</strong> no canto superior direito para carregar o histórico de logs, métricas do UpSeller e iniciar a automação.
+          </p>
         </div>
-
-        {/* Card de Status Neon */}
-        <div style={{ 
-          background: '#131924', 
-          border: `1px solid ${status === 'running' ? '#3b82f6' : status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : '#1f2a3d'}`, 
-          boxShadow: status === 'running' ? '0 0 15px rgba(59, 130, 246, 0.15)' : status === 'success' ? '0 0 15px rgba(16, 185, 129, 0.15)' : status === 'error' ? '0 0 15px rgba(239, 68, 68, 0.15)' : 'none',
-          borderRadius: '12px', 
-          padding: '1.5rem', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          justifyContent: 'center', 
-          alignItems: 'center',
-          textAlign: 'center'
-        }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>STATUS DO BOT</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ 
-              width: '10px', 
-              height: '10px', 
-              borderRadius: '50%', 
-              background: status === 'running' ? '#3b82f6' : status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : '#64748b',
-              animation: status === 'running' ? 'pulse 1.5s infinite' : 'none'
-            }} />
-            <span style={{ 
-              fontWeight: 700, 
-              fontSize: '1.25rem', 
-              color: status === 'running' ? '#3b82f6' : status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : '#94a3b8' 
-            }}>
-              {status === 'running' ? 'EXECUTANDO' : status === 'success' ? 'SUCESSO' : status === 'error' ? 'FALHA' : 'AGUARDANDO'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid de Métricas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '8px', padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Anúncios Varridos</span>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#fff', marginTop: '0.25rem' }}>{metrics.scraped}</div>
-        </div>
-        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '8px', padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Mapeados Automatizados</span>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#10b981', marginTop: '0.25rem' }}>{metrics.mapped}</div>
-        </div>
-        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '8px', padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Kits Criados (Armazém)</span>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#a855f7', marginTop: '0.25rem' }}>{metrics.kits}</div>
-        </div>
-        <div style={{ 
-          background: '#1c161b', 
-          border: metrics.review > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid #1f2a3d', 
-          borderRadius: '8px', 
-          padding: '1.25rem',
-          boxShadow: metrics.review > 0 ? '0 0 10px rgba(239, 68, 68, 0.05)' : 'none'
-        }}>
-          <span style={{ fontSize: '0.85rem', color: metrics.review > 0 ? '#fca5a5' : 'var(--text-secondary)' }}>Necessita Revisão Humana</span>
-          <div style={{ fontSize: '1.75rem', fontWeight: 700, color: metrics.review > 0 ? '#ef4444' : '#fff', marginTop: '0.25rem' }}>{metrics.review}</div>
-        </div>
-      </div>
-
-      {/* Terminal de Logs */}
-      <div style={{ background: '#090d16', border: '1px solid #1f2a3d', borderRadius: '12px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ background: '#131924', padding: '0.75rem 1.25rem', borderBottom: '1px solid #1f2a3d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#eab308' }} />
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
-            Console de Execução em Tempo Real
-          </span>
-          <button 
-            onClick={() => setLogs([])}
-            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', hover: { color: '#fff' } } as any}
-          >
-            Limpar Console
-          </button>
-        </div>
-
-        <div 
-          ref={logTerminalRef}
-          style={{ 
-            height: '350px', 
-            padding: '1rem', 
-            fontFamily: 'monospace', 
-            fontSize: '0.85rem', 
-            overflowY: 'auto', 
-            background: '#090d16', 
-            color: '#34d399', 
-            lineHeight: '1.5' 
-          }}
-        >
-          {logs.map((log, index) => (
-            <div key={index} style={{ 
-              color: log.includes('[ERRO]') ? '#f87171' : log.includes('[SISTEMA]') ? '#60a5fa' : log.includes('[RPA Driver]') ? '#a78bfa' : '#34d399' 
-            }}>
-              {log}
+      ) : (
+        <>
+          {/* Grid Superior: Painel de Controle e Status */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1.5rem', marginBottom: '2rem' }}>
+            
+            {/* Controle e Execução */}
+            <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600 }}>Execução do RPA de Conciliação</h3>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  Inicia a varredura no UpSeller, busca anúncios não mapeados e realiza a reconciliação visual de SKUs simples e compostos.
+                </p>
+              </div>
+              <button
+                onClick={handleStartAutomation}
+                disabled={running || !selectedClientId}
+                className={running ? 'btn-secondary' : 'btn-primary'}
+                style={{ minWidth: '180px', padding: '0.75rem 1.5rem', fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: running ? 'not-allowed' : 'pointer' }}
+              >
+                {running ? (
+                  <>
+                    <span className="spinner" style={{ width: '16px', height: '16px' }} /> Executando...
+                  </>
+                ) : (
+                  '⚡ Executar RPA Agora'
+                )}
+              </button>
             </div>
-          ))}
-          {running && (
-            <div style={{ color: '#94a3b8', animation: 'blink 1s infinite' }}>
-              █ Executando operações de tela...
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Histórico Recente de Execuções */}
-      <div style={{ marginTop: '3rem' }}>
-        <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>Sessões Recentes</h3>
-        {sessions.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #334155', color: 'var(--text-secondary)' }}>
-                  <th style={{ padding: '0.75rem' }}>Início</th>
-                  <th style={{ padding: '0.75rem' }}>Duração</th>
-                  <th style={{ padding: '0.75rem' }}>Status</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Não Mapeados</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Mapeados</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Kits Criados</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'center' }}>Revisões</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map(s => {
-                  const duration = s.ended_at 
-                    ? `${Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000)}s` 
-                    : 'Em andamento';
-                  return (
-                    <tr key={s.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '0.75rem' }}>{new Date(s.started_at).toLocaleString()}</td>
-                      <td style={{ padding: '0.75rem' }}>{duration}</td>
-                      <td style={{ padding: '0.75rem' }}>
-                        <span style={{ 
-                          padding: '0.25rem 0.5rem', 
-                          borderRadius: '4px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: 600,
-                          background: s.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : s.status === 'failed' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                          color: s.status === 'completed' ? '#10b981' : s.status === 'failed' ? '#ef4444' : '#3b82f6'
-                        }}>
-                          {s.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center' }}>{s.scraped_count}</td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#10b981', fontWeight: 600 }}>{s.mapped_count}</td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center', color: '#a855f7' }}>{s.kits_created_count}</td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center', color: s.review_required_count > 0 ? '#ef4444' : '#fff' }}>
-                        {s.review_required_count}
-                      </td>
+            {/* Card de Status Neon */}
+            <div style={{ 
+              background: '#131924', 
+              border: `1px solid ${status === 'running' ? '#3b82f6' : status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : '#1f2a3d'}`, 
+              boxShadow: status === 'running' ? '0 0 15px rgba(59, 130, 246, 0.15)' : status === 'success' ? '0 0 15px rgba(16, 185, 129, 0.15)' : status === 'error' ? '0 0 15px rgba(239, 68, 68, 0.15)' : 'none',
+              borderRadius: '12px', 
+              padding: '1.5rem', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              textAlign: 'center'
+            }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>STATUS DO BOT</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ 
+                  width: '10px', 
+                  height: '10px', 
+                  borderRadius: '50%', 
+                  background: status === 'running' ? '#3b82f6' : status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : '#64748b',
+                  animation: status === 'running' ? 'pulse 1.5s infinite' : 'none'
+                }} />
+                <span style={{ 
+                  fontWeight: 700, 
+                  fontSize: '1.25rem', 
+                  color: status === 'running' ? '#3b82f6' : status === 'success' ? '#10b981' : status === 'error' ? '#ef4444' : '#94a3b8' 
+                }}>
+                  {status === 'running' ? 'EXECUTANDO' : status === 'success' ? 'SUCESSO' : status === 'error' ? 'FALHA' : 'AGUARDANDO'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de Métricas */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+            <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '8px', padding: '1.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Anúncios Varridos</span>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#fff', marginTop: '0.25rem' }}>{metrics.scraped}</div>
+            </div>
+            <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '8px', padding: '1.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Mapeados Automatizados</span>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#10b981', marginTop: '0.25rem' }}>{metrics.mapped}</div>
+            </div>
+            <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '8px', padding: '1.25rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Kits Criados (Armazém)</span>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#a855f7', marginTop: '0.25rem' }}>{metrics.kits}</div>
+            </div>
+            <div style={{ 
+              background: '#1c161b', 
+              border: metrics.review > 0 ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid #1f2a3d', 
+              borderRadius: '8px', 
+              padding: '1.25rem',
+              boxShadow: metrics.review > 0 ? '0 0 10px rgba(239, 68, 68, 0.05)' : 'none'
+            }}>
+              <span style={{ fontSize: '0.85rem', color: metrics.review > 0 ? '#fca5a5' : 'var(--text-secondary)' }}>Necessita Revisão Humana</span>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: metrics.review > 0 ? '#ef4444' : '#fff', marginTop: '0.25rem' }}>{metrics.review}</div>
+            </div>
+          </div>
+
+          {/* Terminal de Logs */}
+          <div style={{ background: '#090d16', border: '1px solid #1f2a3d', borderRadius: '12px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: '#131924', padding: '0.75rem 1.25rem', borderBottom: '1px solid #1f2a3d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#eab308' }} />
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
+                Console de Execução em Tempo Real
+              </span>
+              <button 
+                onClick={() => setLogs([])}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer' }}
+              >
+                Limpar Console
+              </button>
+            </div>
+
+            <div 
+              ref={logTerminalRef}
+              style={{ 
+                height: '350px', 
+                padding: '1rem', 
+                fontFamily: 'monospace', 
+                fontSize: '0.85rem', 
+                overflowY: 'auto', 
+                background: '#090d16', 
+                color: '#34d399', 
+                lineHeight: '1.5' 
+              }}
+            >
+              {logs.map((log, index) => (
+                <div key={index} style={{ 
+                  color: log.includes('[ERRO]') ? '#f87171' : log.includes('[SISTEMA]') ? '#60a5fa' : log.includes('[RPA Driver]') ? '#a78bfa' : '#34d399' 
+                }}>
+                  {log}
+                </div>
+              ))}
+              {running && (
+                <div style={{ color: '#94a3b8', animation: 'blink 1s infinite' }}>
+                  █ Executando operações de tela...
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Histórico Recente de Execuções */}
+          <div style={{ marginTop: '3rem' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem' }}>Sessões Recentes</h3>
+            {sessions.length > 0 ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #334155', color: 'var(--text-secondary)' }}>
+                      <th style={{ padding: '0.75rem' }}>Início</th>
+                      <th style={{ padding: '0.75rem' }}>Duração</th>
+                      <th style={{ padding: '0.75rem' }}>Status</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center' }}>Não Mapeados</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center' }}>Mapeados</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center' }}>Kits Criados</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'center' }}>Revisões</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {sessions.map(s => {
+                      const duration = s.ended_at 
+                        ? `${Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000)}s` 
+                        : 'Em andamento';
+                      return (
+                        <tr key={s.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '0.75rem' }}>{new Date(s.started_at).toLocaleString()}</td>
+                          <td style={{ padding: '0.75rem' }}>{duration}</td>
+                          <td style={{ padding: '0.75rem' }}>
+                            <span style={{ 
+                              padding: '0.25rem 0.5rem', 
+                              borderRadius: '4px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: 600,
+                              background: s.status === 'completed' ? 'rgba(16, 185, 129, 0.15)' : s.status === 'failed' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                              color: s.status === 'completed' ? '#10b981' : s.status === 'failed' ? '#ef4444' : '#3b82f6'
+                            }}>
+                              {s.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>{s.scraped_count}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#10b981', fontWeight: 600 }}>{s.mapped_count}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: '#a855f7' }}>{s.kits_created_count}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center', color: s.review_required_count > 0 ? '#ef4444' : '#fff' }}>
+                            {s.review_required_count}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)' }}>Nenhum histórico de sessões anteriores encontrado para este cliente.</p>
+            )}
           </div>
-        ) : (
-          <p style={{ color: 'var(--text-secondary)' }}>Nenhum histórico de sessões anteriores encontrado para este cliente.</p>
-        )}
-      </div>
+        </>
+      )}
 
       <style jsx global>{`
         @keyframes pulse {

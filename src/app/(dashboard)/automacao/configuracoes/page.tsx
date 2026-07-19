@@ -33,10 +33,8 @@ export default function AutomationSettings() {
       
       if (data && data.length > 0) {
         setClients(data);
-        setSelectedClientId(data[0].id);
-      } else {
-        setLoading(false);
       }
+      setLoading(false);
     }
     loadClients();
   }, []);
@@ -154,6 +152,7 @@ export default function AutomationSettings() {
             className="form-input"
             style={{ width: '250px', background: '#1e293b', border: '1px solid #334155', color: '#fff', borderRadius: '6px', padding: '0.5rem' }}
           >
+            <option value="">-- Selecione um Cliente --</option>
             {clients.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -177,133 +176,135 @@ export default function AutomationSettings() {
         </Link>
       </nav>
 
-      {/* Formulário de Configuração */}
-      <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '2rem', maxWidth: '800px' }}>
-        <h3 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem', fontWeight: 600 }}>Parâmetros do Robô UpSeller RPA</h3>
+      {!selectedClientId ? (
+        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1.5rem' }}>⚙️</span>
+          <h3 style={{ color: '#fff', fontSize: '1.35rem', fontWeight: 600, margin: 0 }}>Nenhum Cliente Selecionado</h3>
+          <p style={{ marginTop: '0.75rem', fontSize: '0.95rem', maxWidth: '600px', margin: '0.75rem auto 0', lineHeight: '1.6' }}>
+            Por favor, selecione um cliente ativo no menu <strong>Cliente Ativo</strong> no canto superior direito para visualizar ou configurar as credenciais e parâmetros do robô UpSeller.
+          </p>
+        </div>
+      ) : (
+        /* Formulário de Configuração */
+        <div style={{ background: '#131924', border: '1px solid #1f2a3d', borderRadius: '12px', padding: '2rem', maxWidth: '800px' }}>
+          <h3 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem', fontWeight: 600 }}>Parâmetros do Robô UpSeller RPA</h3>
 
-        {message.text && (
-          <div 
-            className={`alert ${message.type === 'success' ? 'alert-success' : 'alert-error'}`} 
-            style={{ marginBottom: '1.5rem' }}
-          >
-            <span>{message.type === 'success' ? '✅' : '⚠️'}</span>
-            <span>{message.text}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSaveSettings} className="auth-form">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-            
-            {/* Email UpSeller */}
-            <div className="form-field">
-              <label className="form-label">E-mail de Login no UpSeller</label>
-              <input
-                type="email"
-                className="form-input"
-                placeholder="usuario@dominio.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                style={{ background: '#0d1117', color: '#fff' }}
-              />
+          {message.text && (
+            <div 
+              className={`alert ${message.type === 'success' ? 'alert-success' : 'alert-error'}`} 
+              style={{ marginBottom: '1.5rem' }}
+            >
+              <span>{message.type === 'success' ? '✅' : '⚠️'}</span>
+              <span>{message.text}</span>
             </div>
+          )}
 
-            {/* Password UpSeller */}
-            <div className="form-field">
-              <label className="form-label">Senha de Login no UpSeller</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder={email ? '•••••••• (Preenchida)' : 'Digite a senha'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={{ background: '#0d1117', color: '#fff' }}
-              />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                Deixe em branco para manter a senha cadastrada anteriormente.
-              </span>
-            </div>
-
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-            
-            {/* Cron Schedule */}
-            <div className="form-field">
-              <label className="form-label">Agendamento de Execução (Cron)</label>
-              <input
-                type="text"
-                className="form-input"
-                value={cron}
-                onChange={(e) => setCron(e.target.value)}
-                required
-                style={{ background: '#0d1117', color: '#fff' }}
-              />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                Padrão: `0 2 * * *` (Executa diariamente às 2:00 da manhã).
-              </span>
-            </div>
-
-            {/* Ativo */}
-            <div className="form-field" style={{ justifyContent: 'center' }}>
-              <label className="form-label" style={{ marginBottom: '0.5rem' }}>Status da Automação</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <form onSubmit={handleSaveSettings} className="auth-form">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+              
+              {/* Email UpSeller */}
+              <div className="form-field">
+                <label className="form-label">E-mail de Login no UpSeller</label>
                 <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                  type="email"
+                  className="form-input"
+                  placeholder="EX: contato@cliente.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
                 />
-                <span style={{ fontWeight: 600, color: isActive ? '#10b981' : 'var(--text-secondary)' }}>
-                  {isActive ? 'AGENDAMENTO ATIVO' : 'AGENDAMENTO PAUSADO'}
+              </div>
+
+              {/* Senha UpSeller */}
+              <div className="form-field">
+                <label className="form-label">Senha de Login (Criptografada)</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder={email ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required={!email}
+                />
+              </div>
+
+            </div>
+
+            {/* Agendamento Cron e Ativação */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
+              
+              <div className="form-field">
+                <label className="form-label">Agendamento de Varredura (Expressão Cron)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="EX: 0 2 * * * (Todo dia às 02h)"
+                  value={cron}
+                  onChange={(e) => setCron(e.target.value)}
+                  required
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Expressão cron de 5 campos (Minuto Hora Dia-do-Mês Mês Dia-da-Semana).
                 </span>
               </div>
+
+              <div className="form-field" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginTop: '0.75rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <span>Habilitar automações diárias para este cliente</span>
+                </label>
+              </div>
+
             </div>
 
-          </div>
+            {/* Cookies JSON */}
+            <div className="form-field" style={{ marginBottom: '2rem' }}>
+              <label className="form-label">Cookies de Sessão do UpSeller (Opcional - Formato JSON)</label>
+              <textarea
+                className="form-input"
+                placeholder='Ex: [ { "name": "sid", "value": "xyz123...", "domain": ".upseller.com" } ]'
+                value={cookiesJson}
+                onChange={(e) => setCookiesJson(e.target.value)}
+                style={{ height: '120px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                Fornecer cookies válidos evita a necessidade de realizar o login visual com bypass de captcha em cada varredura.
+              </span>
+            </div>
 
-          {/* Cookies Area */}
-          <div className="form-field" style={{ marginBottom: '2rem' }}>
-            <label className="form-label">Contorno de CAPTCHA: Cookies de Sessão (JSON)</label>
-            <textarea
-              className="form-input"
-              rows={6}
-              placeholder='[\n  { "name": "session_id", "value": "xxxx", "domain": ".upseller.com" }\n]'
-              value={cookiesJson}
-              onChange={(e) => setCookiesJson(e.target.value)}
-              style={{ fontFamily: 'monospace', fontSize: '0.8rem', background: '#0d1117', color: '#34d399', padding: '0.75rem', lineHeight: '1.4' }}
-            />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-              Utilize uma extensão como <strong>EditThisCookie</strong> no seu navegador após fazer login no UpSeller, exporte no formato JSON e cole acima para autenticação direta sem CAPTCHA.
-            </span>
-          </div>
+            {/* Ações */}
+            <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid #1e293b', paddingTop: '1.5rem' }}>
+              <button 
+                type="submit" 
+                disabled={saving}
+                className="btn-primary" 
+                style={{ padding: '0.75rem 2rem', fontWeight: 600, marginTop: 0 }}
+              >
+                {saving ? 'Gravando...' : '💾 Salvar Parâmetros'}
+              </button>
 
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              disabled={saving} 
-              style={{ padding: '0.75rem 2rem', fontWeight: 600, marginTop: 0 }}
-            >
-              {saving ? <span className="spinner" /> : '💾 Salvar Configurações'}
-            </button>
-            
-            <button 
-              type="button" 
-              onClick={() => {
-                if (confirm('Deseja testar a conexão com estes parâmetros?')) {
-                  alert('Teste de conexão simulado concluído com sucesso!');
-                }
-              }}
-              className="btn-secondary" 
-              style={{ padding: '0.75rem 1.5rem' }}
-            >
-              🔌 Testar Conexão RPA
-            </button>
-          </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (confirm('Deseja testar a conexão com estes parâmetros?')) {
+                    alert('Teste de conexão simulado concluído com sucesso!');
+                  }
+                }}
+                className="btn-secondary" 
+                style={{ padding: '0.75rem 1.5rem' }}
+              >
+                🔌 Testar Conexão RPA
+              </button>
+            </div>
 
-        </form>
-      </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
