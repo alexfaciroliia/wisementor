@@ -516,6 +516,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
 
             <Link
+              href="/automacao"
+              className={`menu-item ${pathname.startsWith('/automacao') ? 'active' : ''}`}
+            >
+              🤖 Automação UpSeller
+            </Link>
+
+            <Link
               href="/configuracoes"
               className={`menu-item ${pathname === '/configuracoes' ? 'active' : ''}`}
             >
