@@ -22,6 +22,10 @@ export default function AutomationSettings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [selectedHour, setSelectedHour] = useState('02:00');
+  const [showAdvancedCron, setShowAdvancedCron] = useState(false);
+
   // 1. Carregar Clientes
   useEffect(() => {
     async function loadClients() {
@@ -58,6 +62,7 @@ export default function AutomationSettings() {
   async function loadSettings() {
     setLoading(true);
     setMessage({ type: '', text: '' });
+    setShowPassword(false);
     try {
       const response = await fetch(`/api/automacao/settings?clientId=${selectedClientId}`);
       const data = await response.json();
@@ -65,7 +70,20 @@ export default function AutomationSettings() {
         const s = data.settings;
         setEmail(s.upseller_email || '');
         setPassword(''); // Senhas nunca são expostas de volta por segurança
-        setCron(s.run_schedule || '0 2 * * *');
+        
+        const loadedCron = s.run_schedule || '0 2 * * *';
+        setCron(loadedCron);
+        
+        // Tenta decodificar cron simples diário (formato: "0 H * * *")
+        const match = loadedCron.trim().match(/^0\s+(\d+)\s+\*\s+\*\s+\*$/);
+        if (match) {
+          const hour = match[1].padStart(2, '0');
+          setSelectedHour(`${hour}:00`);
+          setShowAdvancedCron(false);
+        } else {
+          setShowAdvancedCron(true);
+        }
+
         setIsActive(s.is_active ?? true);
         setCookiesJson(s.session_cookies ? JSON.stringify(s.session_cookies, null, 2) : '');
       } else {
@@ -73,6 +91,8 @@ export default function AutomationSettings() {
         setEmail('');
         setPassword('');
         setCron('0 2 * * *');
+        setSelectedHour('02:00');
+        setShowAdvancedCron(false);
         setIsActive(true);
         setCookiesJson('');
       }
@@ -102,6 +122,12 @@ export default function AutomationSettings() {
       }
     }
 
+    let finalCron = cron;
+    if (!showAdvancedCron) {
+      const hour = parseInt(selectedHour.split(':')[0], 10);
+      finalCron = `0 ${hour} * * *`;
+    }
+
     try {
       const response = await fetch('/api/automacao/settings', {
         method: 'POST',
@@ -110,7 +136,7 @@ export default function AutomationSettings() {
           clientId: selectedClientId,
           upseller_email: email,
           upseller_password: password || undefined, // Apenas atualiza se digitado
-          run_schedule: cron,
+          run_schedule: finalCron,
           is_active: isActive,
           session_cookies: parsedCookies
         })
@@ -233,40 +259,108 @@ export default function AutomationSettings() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  style={{ background: '#0d1117', color: '#fff' }}
                 />
               </div>
 
-              {/* Senha UpSeller */}
+              {/* Senha UpSeller com Olhinho */}
               <div className="form-field">
                 <label className="form-label">Senha de Login (Criptografada)</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  placeholder={email ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required={!email}
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="form-input"
+                    placeholder={email ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required={!email}
+                    style={{ paddingRight: '2.5rem', width: '100%', background: '#0d1117', color: '#fff' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '10px',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '1.15rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px'
+                    }}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
 
             </div>
 
-            {/* Agendamento Cron e Ativação */}
+            {/* Agendamento de Automação */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
               
               <div className="form-field">
-                <label className="form-label">Agendamento de Varredura (Expressão Cron)</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="EX: 0 2 * * * (Todo dia às 02h)"
-                  value={cron}
-                  onChange={(e) => setCron(e.target.value)}
-                  required
-                />
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
-                  Expressão cron de 5 campos (Minuto Hora Dia-do-Mês Mês Dia-da-Semana).
-                </span>
+                {!showAdvancedCron ? (
+                  <>
+                    <label className="form-label">Horário da Varredura Diária</label>
+                    <select
+                      value={selectedHour}
+                      onChange={(e) => setSelectedHour(e.target.value)}
+                      className="form-input"
+                      style={{ background: '#0d1117', color: '#fff', padding: '0.55rem' }}
+                    >
+                      {Array.from({ length: 24 }, (_, i) => {
+                        const h = i.toString().padStart(2, '0');
+                        const time = `${h}:00`;
+                        let suffix = '';
+                        if (i === 0) suffix = ' (Meia-noite)';
+                        else if (i === 12) suffix = ' (Meio-dia)';
+                        else if (i === 2) suffix = ' (Recomendado)';
+                        else if (i >= 1 && i <= 11) suffix = ' da manhã';
+                        else if (i >= 13 && i <= 18) suffix = ' da tarde';
+                        else suffix = ' da noite';
+                        return (
+                          <option key={time} value={time}>
+                            {time}{suffix}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                      Escolha o horário em que o robô fará a varredura automática das vendas no UpSeller.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <label className="form-label">Agendamento de Varredura (Expressão Cron)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="EX: 0 2 * * * (Todo dia às 02h)"
+                      value={cron}
+                      onChange={(e) => setCron(e.target.value)}
+                      required
+                      style={{ background: '#0d1117', color: '#fff' }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                      Expressão cron avançada de 5 campos (Minuto Hora Dia-do-Mês Mês Dia-da-Semana).
+                    </span>
+                  </>
+                )}
+                
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', marginTop: '0.65rem', fontSize: '0.75rem', color: 'var(--primary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={showAdvancedCron}
+                    onChange={(e) => setShowAdvancedCron(e.target.checked)}
+                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                  />
+                  <span>⚙️ Configuração avançada de execução (Expressão CRON)</span>
+                </label>
               </div>
 
               <div className="form-field" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -283,6 +377,27 @@ export default function AutomationSettings() {
 
             </div>
 
+            {/* Guia de Ajuda de Cookies */}
+            <div style={{ background: '#182030', border: '1px solid #2e3b52', borderRadius: '8px', padding: '1.25rem', marginBottom: '1rem', marginTop: '2rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                💡 O que são e como obter os Cookies de Sessão?
+              </h4>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                Os cookies funcionam como uma <strong>&quot;chave digital pré-autorizada&quot;</strong>. Ao colar os cookies da conta do cliente aqui, o robô consegue acessar o painel do UpSeller sem precisar resolver desafios de letras/números (CAPTCHAs) chatos na hora do login.
+              </p>
+              
+              <details style={{ marginTop: '0.75rem', cursor: 'pointer' }}>
+                <summary style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8' }}>Ver passo a passo simplificado para obter os cookies (Clique para expandir)</summary>
+                <ol style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                  <li>Instale a extensão gratuita <a href="https://chromewebstore.google.com/detail/editthiscookie/fngmhnnpilhplfgbaggldgbgbinedjed" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>EditThisCookie</a> no seu navegador Google Chrome.</li>
+                  <li>Acesse o painel do <a href="https://www.upseller.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>UpSeller</a> no Chrome, faça login normalmente na conta do cliente e deixe a página aberta.</li>
+                  <li>Clique no ícone de biscoito (EditThisCookie) no canto superior direito do seu navegador.</li>
+                  <li>Clique no botão de <strong>Exportar (ícone de seta para a direita)</strong>. Os cookies serão copiados automaticamente para a sua área de transferência.</li>
+                  <li>Volte a esta tela e simplesmente <strong>cole (Ctrl+V)</strong> no campo de texto abaixo.</li>
+                </ol>
+              </details>
+            </div>
+
             {/* Cookies JSON */}
             <div className="form-field" style={{ marginBottom: '2rem' }}>
               <label className="form-label">Cookies de Sessão do UpSeller (Opcional - Formato JSON)</label>
@@ -291,7 +406,7 @@ export default function AutomationSettings() {
                 placeholder='Ex: [ { "name": "sid", "value": "xyz123...", "domain": ".upseller.com" } ]'
                 value={cookiesJson}
                 onChange={(e) => setCookiesJson(e.target.value)}
-                style={{ height: '120px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                style={{ height: '120px', fontFamily: 'monospace', fontSize: '0.85rem', background: '#0d1117', color: '#fff' }}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
                 Fornecer cookies válidos evita a necessidade de realizar o login visual com bypass de captcha em cada varredura.
