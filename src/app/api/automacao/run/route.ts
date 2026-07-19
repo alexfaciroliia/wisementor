@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { UpSellerDriver } from '@/lib/automation/upseller-driver';
-import { DbSyncManager } from '@/lib/automation/db-sync';
+import { DbSyncManager, DbListing } from '@/lib/automation/db-sync';
 import { classifyMarketplaceListing, buildKitSkuName } from '@/lib/automation/decision-engine';
 
 export async function POST(req: Request) {
@@ -64,6 +64,21 @@ export async function POST(req: Request) {
       pushLog('Nenhum anúncio não mapeado foi identificado no UpSeller. Finalizando.');
       return NextResponse.json({ success: true, message: 'Nenhum anúncio pendente.', logs });
     }
+
+    // Salvar os anúncios extraídos no banco de dados do WiseMentor para possibilitar conciliação posterior
+    const dbListingsToSync: DbListing[] = unmappedListings.map(l => ({
+      client_id: clientId,
+      marketplace: l.marketplace,
+      marketplace_listing_id: l.marketplace_listing_id,
+      title: l.title,
+      image_url: l.image_url,
+      incorrect_sku: l.incorrect_sku,
+      status: 'unmapped',
+      detected_type: 'unknown'
+    }));
+    await sync.syncMarketplaceListings(dbListingsToSync).catch(err => {
+      pushLog(`[AVISO] Erro ao salvar anúncios no banco: ${err.message}`);
+    });
 
     // Registrar sessão no Supabase (se possível)
     const sessionId = await sync.createSession(clientId).catch(() => null);
