@@ -259,6 +259,7 @@ export default function AutomationSettings() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="off"
                   style={{ background: '#0d1117', color: '#fff' }}
                 />
               </div>
@@ -274,6 +275,7 @@ export default function AutomationSettings() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required={!email}
+                    autoComplete="new-password"
                     style={{ paddingRight: '2.5rem', width: '100%', background: '#0d1117', color: '#fff' }}
                   />
                   <button
