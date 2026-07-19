@@ -25,6 +25,7 @@ export default function AutomationSettings() {
   const [showPassword, setShowPassword] = useState(false);
   const [selectedHour, setSelectedHour] = useState('02:00');
   const [showAdvancedCron, setShowAdvancedCron] = useState(false);
+  const [hasExistingConfig, setHasExistingConfig] = useState(false);
 
   // 1. Carregar Clientes
   useEffect(() => {
@@ -86,6 +87,7 @@ export default function AutomationSettings() {
 
         setIsActive(s.is_active ?? true);
         setCookiesJson(s.session_cookies ? JSON.stringify(s.session_cookies, null, 2) : '');
+        setHasExistingConfig(true);
       } else {
         // Limpa campos para novo cadastro
         setEmail('');
@@ -95,9 +97,11 @@ export default function AutomationSettings() {
         setShowAdvancedCron(false);
         setIsActive(true);
         setCookiesJson('');
+        setHasExistingConfig(false);
       }
     } catch (err) {
       console.error(err);
+      setHasExistingConfig(false);
     } finally {
       setLoading(false);
     }
@@ -147,6 +151,7 @@ export default function AutomationSettings() {
       if (response.ok && data.success) {
         setMessage({ type: 'success', text: 'Configurações de automação gravadas com sucesso!' });
         setPassword('');
+        setHasExistingConfig(true);
       } else {
         setMessage({ type: 'error', text: data.error || 'Falha ao salvar configurações.' });
       }
@@ -271,10 +276,10 @@ export default function AutomationSettings() {
                   <input
                     type={showPassword ? "text" : "password"}
                     className="form-input"
-                    placeholder={email ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
+                    placeholder={hasExistingConfig ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required={!email}
+                    required={!hasExistingConfig}
                     autoComplete="new-password"
                     style={{ paddingRight: '2.5rem', width: '100%', background: '#0d1117', color: '#fff' }}
                   />
