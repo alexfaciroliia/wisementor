@@ -241,12 +241,6 @@ export default function AutomationMapping() {
         <Link href="/automacao/mapeamento" style={{ padding: '0.5rem 1rem', borderBottom: '2px solid var(--primary)', fontWeight: 600, color: '#fff' }}>
           🔗 Anúncios e Mapeamento
         </Link>
-        <Link href="/automacao/produtos" style={{ padding: '0.5rem 1rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>
-          📦 Base de Produtos
-        </Link>
-        <Link href="/automacao/configuracoes" style={{ padding: '0.5rem 1rem', color: 'var(--text-secondary)', textDecoration: 'none' }}>
-          ⚙️ Credenciais UpSeller
-        </Link>
       </nav>
 
       {!selectedClientId ? (
