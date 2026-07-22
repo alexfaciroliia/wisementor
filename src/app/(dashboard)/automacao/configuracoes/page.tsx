@@ -290,10 +290,10 @@ export default function AutomationSettings() {
               <details style={{ marginTop: '0.75rem', cursor: 'pointer' }}>
                 <summary style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8' }}>Ver passo a passo simplificado para obter os cookies (Clique para expandir)</summary>
                 <ol style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                  <li>Instale a extensão gratuita <a href="https://chromewebstore.google.com/detail/editthiscookie/fngmhnnpilhplfgbaggldgbgbinedjed" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>EditThisCookie</a> no seu navegador Google Chrome.</li>
+                  <li>Instale a extensão gratuita <a href="https://chromewebstore.google.com/detail/cookie-editor/ookdjilphngeeeghgngjabigmpepanpl" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Cookie-Editor</a> no seu navegador Google Chrome.</li>
                   <li>Acesse o painel do <a href="https://www.upseller.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>UpSeller</a> no Chrome, faça login normalmente na conta do cliente e deixe a página aberta.</li>
-                  <li>Clique no ícone de biscoito (EditThisCookie) no canto superior direito do seu navegador.</li>
-                  <li>Clique no botão de <strong>Exportar (ícone de seta para a direita)</strong>. Os cookies serão copiados automaticamente para a sua área de transferência.</li>
+                  <li>Clique no ícone da extensão (Cookie-Editor) no canto superior direito do seu navegador.</li>
+                  <li>Clique no botão de <strong>Exportar</strong> e selecione <strong>JSON</strong>. Os cookies serão copiados automaticamente para a sua área de transferência.</li>
                   <li>Volte a esta tela e simplesmente <strong>cole (Ctrl+V)</strong> no campo de texto abaixo.</li>
                 </ol>
               </details>
