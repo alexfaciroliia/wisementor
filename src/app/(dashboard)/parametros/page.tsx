@@ -14,9 +14,10 @@ export default function ParametrosPage() {
   const [ignoreKeywords, setIgnoreKeywords] = useState<string>('conjunto')
   const [autoStandardize, setAutoStandardize] = useState<boolean>(true)
 
-  // Estados de Credenciais do UpSeller
+  // Estados de Credenciais & Cookies do UpSeller
   const [upsellerEmail, setUpsellerEmail] = useState<string>('')
   const [upsellerPassword, setUpsellerPassword] = useState<string>('')
+  const [cookiesJson, setCookiesJson] = useState<string>('')
   const [showPassword, setShowPassword] = useState<boolean>(false)
   const [hasExistingConfig, setHasExistingConfig] = useState<boolean>(false)
 
@@ -35,17 +36,19 @@ export default function ParametrosPage() {
       setIgnoreKeywords(params.ignore_keywords.join(', '))
       setAutoStandardize(params.auto_standardize_simples ?? true)
 
-      // 2. Carregar Credenciais UpSeller
+      // 2. Carregar Credenciais & Cookies do UpSeller
       try {
         const res = await fetch(`/api/automacao/settings?clientId=${selectedClientId}`)
         const data = await res.json()
         if (res.ok && data.settings) {
           setUpsellerEmail(data.settings.upseller_email || '')
           setUpsellerPassword('')
+          setCookiesJson(data.settings.session_cookies ? JSON.stringify(data.settings.session_cookies, null, 2) : '')
           setHasExistingConfig(true)
         } else {
           setUpsellerEmail('')
           setUpsellerPassword('')
+          setCookiesJson('')
           setHasExistingConfig(false)
         }
       } catch (err) {
@@ -82,7 +85,17 @@ export default function ParametrosPage() {
         throw new Error(resParams.error || 'Falha ao salvar palavras-chave.')
       }
 
-      // 2. Salvar Credenciais UpSeller (se preenchido)
+      // Validação do JSON dos Cookies
+      let parsedCookies: any = null
+      if (cookiesJson.trim()) {
+        try {
+          parsedCookies = JSON.parse(cookiesJson)
+        } catch (e) {
+          throw new Error('O campo "Cookies de Sessão" deve ser um JSON válido exportado pela extensão Cookie-Editor.')
+        }
+      }
+
+      // 2. Salvar Credenciais & Cookies do UpSeller
       if (upsellerEmail.trim()) {
         const resCreds = await fetch('/api/automacao/settings', {
           method: 'POST',
@@ -90,7 +103,8 @@ export default function ParametrosPage() {
           body: JSON.stringify({
             clientId: selectedClientId,
             upseller_email: upsellerEmail.trim(),
-            upseller_password: upsellerPassword ? upsellerPassword.trim() : undefined
+            upseller_password: upsellerPassword ? upsellerPassword.trim() : undefined,
+            session_cookies: parsedCookies
           })
         })
 
@@ -100,7 +114,7 @@ export default function ParametrosPage() {
         }
       }
 
-      setMessage({ type: 'success', text: `Todos os parâmetros e credenciais do cliente ${selectedClient?.name} foram salvos com sucesso!` })
+      setMessage({ type: 'success', text: `Todos os parâmetros, credenciais e cookies do cliente ${selectedClient?.name} foram salvos com sucesso!` })
       setHasExistingConfig(true)
       setUpsellerPassword('')
     } catch (err: any) {
@@ -118,7 +132,7 @@ export default function ParametrosPage() {
           ⚙️ Parâmetros & Configurações por Cliente
         </h1>
         <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
-          Centralize aqui os gatilhos de **Kits**, termos de **Exceção (Conjuntos)** e as **Credenciais de Acesso ao UpSeller** do cliente ativo.
+          Centralize aqui os gatilhos de **Kits**, termos de **Exceção (Conjuntos)**, **Credenciais** e **Cookies do Cookie-Editor** para autenticação automática no UpSeller.
         </p>
       </div>
 
@@ -206,13 +220,13 @@ export default function ParametrosPage() {
               </div>
             </div>
 
-            {/* SEÇÃO 2: CREDENCIAIS UPSELLER */}
+            {/* SEÇÃO 2: CREDENCIAIS E COOKIES UPSELLER */}
             <div style={{ marginBottom: '2rem' }}>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                🔑 Credenciais de Acesso ao UpSeller
+                🔑 Credenciais & Cookies de Acesso ao UpSeller (Robô RPA)
               </h2>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.4rem' }}>
                     E-mail da Conta UpSeller:
@@ -248,6 +262,23 @@ export default function ParametrosPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Cookies de Sessão (Cookie-Editor) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#a855f7', marginBottom: '0.4rem' }}>
+                  Cookies de Sessão do UpSeller (Exportados via extensão Cookie-Editor):
+                </label>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                  Cole aqui o JSON de cookies exportado da extensão <strong>Cookie-Editor</strong> para permitir que o robô acesse o painel do UpSeller sem exigir login ou verificação manual.
+                </p>
+                <textarea
+                  rows={4}
+                  placeholder='[ { "domain": ".upseller.com", "name": "session", ... } ]'
+                  value={cookiesJson}
+                  onChange={e => setCookiesJson(e.target.value)}
+                  style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#a855f7', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                />
+              </div>
             </div>
 
             {/* Feedback de Mensagem */}
@@ -279,7 +310,7 @@ export default function ParametrosPage() {
                 cursor: saving ? 'wait' : 'pointer'
               }}
             >
-              {saving ? 'Salvando...' : '💾 Salvar Todos os Parâmetros'}
+              {saving ? 'Salvando...' : '💾 Salvar Todos os Parâmetros & Cookies'}
             </button>
           </>
         )}

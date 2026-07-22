@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { clientId, upseller_email, upseller_password, is_active, run_schedule } = body;
+    const { clientId, upseller_email, upseller_password, session_cookies, is_active, run_schedule } = body;
 
     if (!clientId || !upseller_email) {
       return NextResponse.json({ error: 'clientId e upseller_email são obrigatórios.' }, { status: 400 });
@@ -53,6 +53,10 @@ export async function POST(req: Request) {
       is_active: is_active ?? true,
       run_schedule: run_schedule || '0 2 * * *'
     };
+
+    if (session_cookies !== undefined) {
+      upsertData.session_cookies = session_cookies;
+    }
 
     if (upseller_password) {
       // Em produção, isso seria criptografado com chaves secretas do servidor.
