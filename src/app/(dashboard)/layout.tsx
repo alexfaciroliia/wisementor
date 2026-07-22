@@ -516,6 +516,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
 
             <Link
+              href="/produtos"
+              className={`menu-item ${pathname.startsWith('/produtos') ? 'active' : ''}`}
+            >
+              📦 Produtos (Armazém)
+            </Link>
+
+            <Link
+              href="/padronizacao"
+              className={`menu-item ${pathname.startsWith('/padronizacao') ? 'active' : ''}`}
+            >
+              🎯 Padronização & Kits
+            </Link>
+
+            <Link
+              href="/parametros"
+              className={`menu-item ${pathname.startsWith('/parametros') ? 'active' : ''}`}
+            >
+              ⚙️ Parâmetros por Cliente
+            </Link>
+
+            <Link
               href="/automacao"
               className={`menu-item ${pathname.startsWith('/automacao') ? 'active' : ''}`}
             >
