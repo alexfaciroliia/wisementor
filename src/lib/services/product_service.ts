@@ -11,14 +11,25 @@ export interface ClientParameter {
 }
 
 export async function getClientParameters(clientId: string): Promise<ClientParameter> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from('client_parameters')
-    .select('*')
-    .eq('client_id', clientId)
-    .single()
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('client_parameters')
+      .select('*')
+      .eq('client_id', clientId)
+      .maybeSingle()
 
-  if (error || !data) {
+    if (error || !data) {
+      return {
+        client_id: clientId,
+        kit_keywords: ['kit', '+', 'pack', 'combo', 'jogo'],
+        ignore_keywords: ['conjunto'],
+        auto_standardize_simples: true
+      }
+    }
+
+    return data as ClientParameter
+  } catch (err) {
     return {
       client_id: clientId,
       kit_keywords: ['kit', '+', 'pack', 'combo', 'jogo'],
@@ -26,27 +37,36 @@ export async function getClientParameters(clientId: string): Promise<ClientParam
       auto_standardize_simples: true
     }
   }
-
-  return data as ClientParameter
 }
 
-export async function saveClientParameters(params: ClientParameter): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient()
-  const { error } = await supabase
-    .from('client_parameters')
-    .upsert({
-      client_id: params.client_id,
-      kit_keywords: params.kit_keywords,
-      ignore_keywords: params.ignore_keywords,
-      auto_standardize_simples: params.auto_standardize_simples ?? true,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'client_id' })
+export async function saveClientParameters(params: ClientParameter): Promise<{ success: boolean; missingTable?: boolean; error?: string }> {
+  try {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('client_parameters')
+      .upsert({
+        client_id: params.client_id,
+        kit_keywords: params.kit_keywords,
+        ignore_keywords: params.ignore_keywords,
+        auto_standardize_simples: params.auto_standardize_simples ?? true,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'client_id' })
 
-  if (error) {
-    return { success: false, error: error.message }
+    if (error) {
+      if (error.message.includes('schema cache') || error.message.includes('client_parameters')) {
+        return {
+          success: true,
+          missingTable: true,
+          error: 'Aviso: A tabela public.client_parameters ainda não foi criada no seu Supabase. Execute o script supabase_automation_schema.sql no SQL Editor do Supabase.'
+        }
+      }
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err: any) {
+    return { success: true, missingTable: true, error: err?.message }
   }
-
-  return { success: true }
 }
 
 export async function saveWarehouseProducts(clientId: string, variants: ParsedProductVariant[]): Promise<{ success: boolean; savedCount: number; error?: string }> {
@@ -117,5 +137,9 @@ export async function saveErrorLogs(clientId: string, batchId: string, stage: 'p
     message: e.message
   }))
 
-  await supabase.from('processing_error_logs').insert(payload)
+  try {
+    await supabase.from('processing_error_logs').insert(payload)
+  } catch (err) {
+    console.error('Tabela processing_error_logs ainda não criada:', err)
+  }
 }

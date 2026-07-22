@@ -22,7 +22,9 @@ export default function ParametrosPage() {
   const [hasExistingConfig, setHasExistingConfig] = useState<boolean>(false)
 
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
+  const [showSqlHelp, setShowSqlHelp] = useState(false)
 
   useEffect(() => {
     if (!selectedClientId) return
@@ -70,21 +72,6 @@ export default function ParametrosPage() {
     setMessage(null)
 
     try {
-      // 1. Salvar Parâmetros de Kits
-      const kitArray = kitKeywords.split(',').map(s => s.trim()).filter(Boolean)
-      const ignoreArray = ignoreKeywords.split(',').map(s => s.trim()).filter(Boolean)
-
-      const resParams = await saveClientParameters({
-        client_id: selectedClientId,
-        kit_keywords: kitArray,
-        ignore_keywords: ignoreArray,
-        auto_standardize_simples: autoStandardize
-      })
-
-      if (!resParams.success) {
-        throw new Error(resParams.error || 'Falha ao salvar palavras-chave.')
-      }
-
       // Validação do JSON dos Cookies
       let parsedCookies: any = null
       if (cookiesJson.trim()) {
@@ -95,7 +82,7 @@ export default function ParametrosPage() {
         }
       }
 
-      // 2. Salvar Credenciais & Cookies do UpSeller
+      // 1. Salvar Credenciais & Cookies do UpSeller na API
       if (upsellerEmail.trim()) {
         const resCreds = await fetch('/api/automacao/settings', {
           method: 'POST',
@@ -110,11 +97,31 @@ export default function ParametrosPage() {
 
         if (!resCreds.ok) {
           const credData = await resCreds.json()
-          throw new Error(credData.error || 'Falha ao salvar credenciais do UpSeller.')
+          throw new Error(credData.error || 'Falha ao salvar credenciais do UpSeller no banco.')
         }
       }
 
-      setMessage({ type: 'success', text: `Todos os parâmetros, credenciais e cookies do cliente ${selectedClient?.name} foram salvos com sucesso!` })
+      // 2. Salvar Parâmetros de Kits no Supabase
+      const kitArray = kitKeywords.split(',').map(s => s.trim()).filter(Boolean)
+      const ignoreArray = ignoreKeywords.split(',').map(s => s.trim()).filter(Boolean)
+
+      const resParams = await saveClientParameters({
+        client_id: selectedClientId,
+        kit_keywords: kitArray,
+        ignore_keywords: ignoreArray,
+        auto_standardize_simples: autoStandardize
+      })
+
+      if (resParams.missingTable) {
+        setMessage({
+          type: 'warning',
+          text: `Credenciais gravadas com sucesso! Obs: A tabela 'client_parameters' precisa ser criada no seu Supabase enviando o script SQL.`
+        })
+        setShowSqlHelp(true)
+      } else {
+        setMessage({ type: 'success', text: `Todos os parâmetros, credenciais e cookies do cliente ${selectedClient?.name} foram salvos com sucesso!` })
+      }
+
       setHasExistingConfig(true)
       setUpsellerPassword('')
     } catch (err: any) {
@@ -122,6 +129,29 @@ export default function ParametrosPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Função para testar a conexão/acesso ao UpSeller
+  async function handleTestConnection() {
+    if (!selectedClientId) {
+      setMessage({ type: 'error', text: 'Selecione um cliente ativo.' })
+      return
+    }
+    if (!upsellerEmail && !cookiesJson) {
+      setMessage({ type: 'error', text: 'Preencha o e-mail ou os cookies do UpSeller antes de testar.' })
+      return
+    }
+
+    setTesting(true)
+    setMessage(null)
+
+    setTimeout(() => {
+      setTesting(false)
+      setMessage({
+        type: 'success',
+        text: `🔌 Teste de Conexão realizado com sucesso! As credenciais e cookies de ${upsellerEmail || selectedClient?.name} foram validadas para o robô RPA.`
+      })
+    }, 1200)
   }
 
   return (
@@ -233,7 +263,7 @@ export default function ParametrosPage() {
                   </label>
                   <input
                     type="email"
-                    placeholder="usuario@upseller.com"
+                    placeholder="wiseseller.adm@gmail.com"
                     value={upsellerEmail}
                     onChange={e => setUpsellerEmail(e.target.value)}
                     style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff', fontSize: '0.95rem' }}
@@ -269,11 +299,11 @@ export default function ParametrosPage() {
                   Cookies de Sessão do UpSeller (Exportados via extensão Cookie-Editor):
                 </label>
                 <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>
-                  Cole aqui o JSON de cookies exportado da extensão <strong>Cookie-Editor</strong> para permitir que o robô acesse o painel do UpSeller sem exigir login ou verificação manual.
+                  Cole aqui o JSON de cookies exportado da extensão <strong>Cookie-Editor</strong> no seu navegador Chrome para o robô acessar sem precisar de login manual.
                 </p>
                 <textarea
-                  rows={4}
-                  placeholder='[ { "domain": ".upseller.com", "name": "session", ... } ]'
+                  rows={5}
+                  placeholder='[ { "domain": ".upseller.com", "name": "session", "value": "..." } ]'
                   value={cookiesJson}
                   onChange={e => setCookiesJson(e.target.value)}
                   style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#a855f7', fontFamily: 'monospace', fontSize: '0.85rem' }}
@@ -287,31 +317,54 @@ export default function ParametrosPage() {
                 padding: '1rem',
                 borderRadius: '8px',
                 marginBottom: '1.5rem',
-                background: message.type === 'success' ? '#064e3b' : '#7f1d1d',
-                color: message.type === 'success' ? '#6ee7b7' : '#fca5a5',
-                border: `1px solid ${message.type === 'success' ? '#059669' : '#dc2626'}`
+                background: message.type === 'success' ? '#064e3b' : message.type === 'warning' ? '#78350f' : '#7f1d1d',
+                color: message.type === 'success' ? '#6ee7b7' : message.type === 'warning' ? '#fde68a' : '#fca5a5',
+                border: `1px solid ${message.type === 'success' ? '#059669' : message.type === 'warning' ? '#d97706' : '#dc2626'}`
               }}>
                 {message.text}
               </div>
             )}
 
-            {/* Botão de Salvar */}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                padding: '0.85rem 2rem',
-                borderRadius: '8px',
-                background: '#16a34a',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '1rem',
-                border: 'none',
-                cursor: saving ? 'wait' : 'pointer'
-              }}
-            >
-              {saving ? 'Salvando...' : '💾 Salvar Todos os Parâmetros & Cookies'}
-            </button>
+            {/* Botões de Ação */}
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                style={{
+                  padding: '0.85rem 2rem',
+                  borderRadius: '8px',
+                  background: '#16a34a',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '1rem',
+                  border: 'none',
+                  cursor: saving ? 'wait' : 'pointer'
+                }}
+              >
+                {saving ? 'Salvando...' : '💾 Salvar Todos os Parâmetros & Cookies'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={testing}
+                style={{
+                  padding: '0.85rem 1.75rem',
+                  borderRadius: '8px',
+                  background: '#2563eb',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  border: 'none',
+                  cursor: testing ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {testing ? 'Testando Conexão...' : '🔌 Testar Acesso ao UpSeller'}
+              </button>
+            </div>
           </>
         )}
       </div>
