@@ -1,24 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { createClient } from '@/lib/supabase/client'
 import { processMarketplaceListings, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult } from '@/lib/excel/planilha_marketplace_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
 import { fetchWarehouseProducts, getClientParameters } from '@/lib/services/product_service'
-import { ErrorLogItem } from '@/lib/excel/planilha1_parser'
-
-interface ClientOption {
-  id: string
-  name: string
-}
+import { useDashboard } from '@/app/(dashboard)/layout'
 
 export default function PadronizacaoPage() {
-  const supabase = createClient()
-
-  const [clients, setClients] = useState<ClientOption[]>([])
-  const [selectedClientId, setSelectedClientId] = useState<string>('')
-  const [loadingClients, setLoadingClients] = useState(true)
+  const { selectedClient, selectedClientId } = useDashboard()
 
   const [marketplace, setMarketplace] = useState<string>('mercado_livre')
   const [targetSpu, setTargetSpu] = useState<string>('')
@@ -30,22 +20,10 @@ export default function PadronizacaoPage() {
   const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
 
-  useEffect(() => {
-    async function loadClients() {
-      const { data } = await supabase.from('clients').select('id, name').order('name')
-      if (data && data.length > 0) {
-        setClients(data)
-        setSelectedClientId(data[0].id)
-      }
-      setLoadingClients(false)
-    }
-    loadClients()
-  }, [])
-
   // Processar padronização de SKUs e formação de kits (Prompt 2)
   async function handleProcessMarketplaceSheet() {
     if (!selectedClientId) {
-      setMessage({ type: 'error', text: 'Selecione um cliente.' })
+      setMessage({ type: 'error', text: 'Selecione um cliente ativo no menu lateral.' })
       return
     }
     if (!targetSpu.trim()) {
@@ -177,20 +155,25 @@ export default function PadronizacaoPage() {
       <div className="card" style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
           
-          {/* Seleção do Cliente */}
+          {/* Cliente Ativo Global */}
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-              Cliente:
+              Cliente Ativo (do Menu Lateral):
             </label>
-            <select
-              value={selectedClientId}
-              onChange={e => setSelectedClientId(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff' }}
-            >
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
+              background: '#1a1e2e',
+              border: '1px solid #38bdf8',
+              color: '#38bdf8',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              💼 {selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'}
+            </div>
           </div>
 
           {/* Seleção do Marketplace */}

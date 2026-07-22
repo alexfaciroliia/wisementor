@@ -24,14 +24,24 @@ export interface Invitation {
   expires_at?: string | null
 }
 
+export interface ClientItem {
+  id: string
+  name: string
+}
+
 interface DashboardContextType {
   profile: Profile | null
   loading: boolean
   invitations: Invitation[]
   allUsers: Profile[]
+  clients: ClientItem[]
+  selectedClientId: string
+  selectedClient: ClientItem | null
+  setSelectedClientId: (id: string) => void
   reloadInvitations: (role: string) => Promise<void>
   reloadUsers: (role: string) => Promise<void>
   reloadProfile: () => Promise<void>
+  reloadClients: () => Promise<void>
 }
 
 const DashboardContext = createContext<DashboardContextType | null>(null)
@@ -52,7 +62,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [profile, setProfile] = useState<Profile | null>(null)
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [allUsers, setAllUsers] = useState<Profile[]>([])
+  const [clients, setClients] = useState<ClientItem[]>([])
+  const [selectedClientId, setSelectedClientIdState] = useState<string>('')
   const [loading, setLoading] = useState(true)
+
+  async function reloadClients() {
+    const { data } = await supabase.from('clients').select('id, name').order('name')
+    if (data && data.length > 0) {
+      setClients(data)
+      const savedId = localStorage.getItem('wisementor_selected_client_id')
+      if (savedId && data.some(c => c.id === savedId)) {
+        setSelectedClientIdState(savedId)
+      } else {
+        setSelectedClientIdState(data[0].id)
+        localStorage.setItem('wisementor_selected_client_id', data[0].id)
+      }
+    } else {
+      setClients([])
+      setSelectedClientIdState('')
+    }
+  }
+
+  function handleSelectClientId(id: string) {
+    setSelectedClientIdState(id)
+    if (id) {
+      localStorage.setItem('wisementor_selected_client_id', id)
+    } else {
+      localStorage.removeItem('wisementor_selected_client_id')
+    }
+  }
+
+  const selectedClient = clients.find(c => c.id === selectedClientId) || null
 
   // Estados do modal de editar perfil
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
@@ -107,6 +147,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return
       }
     }
+
+    // Carregar clientes cadastrados
+    await reloadClients()
 
     // Carregar listas dependendo do papel
     if (loadedProfile.role === 'sistema' || loadedProfile.role === 'administrador') {
@@ -445,9 +488,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       loading,
       invitations,
       allUsers,
+      clients,
+      selectedClientId,
+      selectedClient,
+      setSelectedClientId: handleSelectClientId,
       reloadInvitations,
       reloadUsers,
-      reloadProfile
+      reloadProfile,
+      reloadClients
     }}>
       <div className="app-container">
         {/* Menu Lateral (Sidebar) */}
@@ -480,6 +528,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 🚪 Sair
               </button>
             </div>
+          </div>
+
+          {/* Seletor Global de Cliente Ativo */}
+          <div style={{
+            margin: '0.85rem 1rem 0.5rem 1rem',
+            padding: '0.75rem',
+            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9))',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '10px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                💼 CLIENTE ATIVO
+              </span>
+              {selectedClient && (
+                <span style={{ fontSize: '0.65rem', background: '#0284c7', color: '#fff', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
+                  EM USO
+                </span>
+              )}
+            </div>
+
+            <select
+              value={selectedClientId}
+              onChange={e => handleSelectClientId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.55rem 0.65rem',
+                borderRadius: '6px',
+                background: '#0f172a',
+                border: '1px solid #334155',
+                color: '#f8fafc',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {clients.length === 0 ? (
+                <option value="">Nenhum cliente cadastrado</option>
+              ) : (
+                clients.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))
+              )}
+            </select>
           </div>
 
           <nav className="sidebar-menu">

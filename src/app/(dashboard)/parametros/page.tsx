@@ -1,20 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { getClientParameters, saveClientParameters, ClientParameter } from '@/lib/services/product_service'
-
-interface ClientOption {
-  id: string
-  name: string
-}
+import { getClientParameters, saveClientParameters } from '@/lib/services/product_service'
+import { useDashboard } from '@/app/(dashboard)/layout'
 
 export default function ParametrosPage() {
-  const supabase = createClient()
+  const { selectedClient, selectedClientId } = useDashboard()
 
-  const [clients, setClients] = useState<ClientOption[]>([])
-  const [selectedClientId, setSelectedClientId] = useState<string>('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   const [kitKeywords, setKitKeywords] = useState<string>('kit, +, pack, combo, jogo')
   const [ignoreKeywords, setIgnoreKeywords] = useState<string>('conjunto')
@@ -22,18 +15,6 @@ export default function ParametrosPage() {
 
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-
-  useEffect(() => {
-    async function loadClients() {
-      const { data } = await supabase.from('clients').select('id, name').order('name')
-      if (data && data.length > 0) {
-        setClients(data)
-        setSelectedClientId(data[0].id)
-      }
-      setLoading(false)
-    }
-    loadClients()
-  }, [])
 
   useEffect(() => {
     if (!selectedClientId) return
@@ -49,7 +30,10 @@ export default function ParametrosPage() {
   }, [selectedClientId])
 
   async function handleSave() {
-    if (!selectedClientId) return
+    if (!selectedClientId) {
+      setMessage({ type: 'error', text: 'Selecione um cliente ativo no menu lateral.' })
+      return
+    }
 
     setSaving(true)
     setMessage(null)
@@ -65,7 +49,7 @@ export default function ParametrosPage() {
     })
 
     if (res.success) {
-      setMessage({ type: 'success', text: 'Parâmetros salvos com sucesso no Supabase!' })
+      setMessage({ type: 'success', text: `Parâmetros salvos com sucesso para o cliente ${selectedClient?.name}!` })
     } else {
       setMessage({ type: 'error', text: `Erro ao salvar parâmetros: ${res.error}` })
     }
@@ -88,20 +72,25 @@ export default function ParametrosPage() {
       {/* Card Form */}
       <div className="card" style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '2rem' }}>
         
-        {/* Seleção do Cliente */}
+        {/* Cliente Ativo Global */}
         <div style={{ marginBottom: '1.75rem' }}>
           <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-            Selecione o Cliente:
+            Cliente Ativo (do Menu Lateral):
           </label>
-          <select
-            value={selectedClientId}
-            onChange={e => setSelectedClientId(e.target.value)}
-            style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff', fontSize: '1rem' }}
-          >
-            {clients.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            background: '#1a1e2e',
+            border: '1px solid #38bdf8',
+            color: '#38bdf8',
+            fontWeight: 600,
+            fontSize: '0.95rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            💼 {selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'}
+          </div>
         </div>
 
         {loading ? (

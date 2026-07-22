@@ -1,22 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useState } from 'react'
 import { parsePlanilha1, ParseResultPlanilha1, ParsedProductVariant, ErrorLogItem } from '@/lib/excel/planilha1_parser'
 import { generateWarehouseExcel } from '@/lib/excel/excel_generator'
 import { saveWarehouseProducts, saveErrorLogs } from '@/lib/services/product_service'
-
-interface ClientOption {
-  id: string
-  name: string
-}
+import { useDashboard } from '@/app/(dashboard)/layout'
 
 export default function ProdutosPage() {
-  const supabase = createClient()
-
-  const [clients, setClients] = useState<ClientOption[]>([])
-  const [selectedClientId, setSelectedClientId] = useState<string>('')
-  const [loadingClients, setLoadingClients] = useState(true)
+  const { selectedClient, selectedClientId } = useDashboard()
 
   const [file, setFile] = useState<File | null>(null)
   const [parsing, setParsing] = useState(false)
@@ -25,19 +16,6 @@ export default function ProdutosPage() {
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-
-  // Carregar lista de clientes para vincular o upload
-  useEffect(() => {
-    async function loadClients() {
-      const { data, error } = await supabase.from('clients').select('id, name').order('name')
-      if (data && data.length > 0) {
-        setClients(data)
-        setSelectedClientId(data[0].id)
-      }
-      setLoadingClients(false)
-    }
-    loadClients()
-  }, [])
 
   // Processar arquivo Excel ao selecionar
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -95,7 +73,7 @@ export default function ProdutosPage() {
   // Salvar no Supabase
   async function handleSaveToSupabase() {
     if (!selectedClientId) {
-      setSaveMessage({ type: 'error', text: 'Selecione um cliente para vincular a base de produtos.' })
+      setSaveMessage({ type: 'error', text: 'Selecione um cliente ativo no menu lateral.' })
       return
     }
     if (!parsedData) return
@@ -111,7 +89,7 @@ export default function ProdutosPage() {
       await saveErrorLogs(selectedClientId, batchId, 'planilha_1_produtos', parsedData.errorLogs)
       setSaveMessage({
         type: 'success',
-        text: `Sucesso! ${res.savedCount} produtos foram salvos no armazém do Supabase.`
+        text: `Sucesso! ${res.savedCount} produtos foram salvos no armazém do Supabase para o cliente ${selectedClient?.name}.`
       })
     } else {
       setSaveMessage({ type: 'error', text: `Erro ao salvar no Supabase: ${res.error}` })
@@ -140,32 +118,25 @@ export default function ProdutosPage() {
       <div className="card" style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', alignItems: 'center' }}>
           
-          {/* Seleção do Cliente */}
+          {/* Cliente Ativo Global */}
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-              Cliente de Destino:
+              Cliente Ativo (Selecionado no Menu Lateral):
             </label>
-            {loadingClients ? (
-              <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Carregando clientes...</div>
-            ) : (
-              <select
-                value={selectedClientId}
-                onChange={e => setSelectedClientId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '8px',
-                  background: '#1a1e2e',
-                  border: '1px solid #334155',
-                  color: '#fff',
-                  fontSize: '0.95rem'
-                }}
-              >
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            )}
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
+              background: '#1a1e2e',
+              border: '1px solid #38bdf8',
+              color: '#38bdf8',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              💼 {selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'}
+            </div>
           </div>
 
           {/* Input do Arquivo */}
