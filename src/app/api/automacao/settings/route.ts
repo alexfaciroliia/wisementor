@@ -41,15 +41,22 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { clientId, upseller_email, upseller_password, session_cookies, is_active, run_schedule } = body;
+    const { clientId, upseller_email, upseller_password, session_cookies, custom_parameters, is_active, run_schedule } = body;
 
-    if (!clientId || !upseller_email) {
-      return NextResponse.json({ error: 'clientId e upseller_email são obrigatórios.' }, { status: 400 });
+    if (!clientId) {
+      return NextResponse.json({ error: 'clientId é obrigatório.' }, { status: 400 });
     }
+
+    // Buscar registro existente para não sobrescrever o e-mail caso o usuário altere apenas parâmetros
+    const { data: existing } = await supabase
+      .from('automation_settings')
+      .select('*')
+      .eq('client_id', clientId)
+      .maybeSingle();
 
     const upsertData: any = {
       client_id: clientId,
-      upseller_email,
+      upseller_email: upseller_email || existing?.upseller_email || 'cliente@wisementor.com',
       is_active: is_active ?? true,
       run_schedule: run_schedule || '0 2 * * *'
     };
@@ -58,9 +65,17 @@ export async function POST(req: Request) {
       upsertData.session_cookies = session_cookies;
     }
 
+    if (custom_parameters !== undefined) {
+      // Mesclar parâmetros dentro de session_cookies se necessário ou salvar
+      const currentCookies = existing?.session_cookies || {};
+      if (typeof currentCookies === 'object' && !Array.isArray(currentCookies)) {
+        upsertData.session_cookies = { ...currentCookies, custom_parameters };
+      } else {
+        upsertData.session_cookies = { raw_cookies: currentCookies, custom_parameters };
+      }
+    }
+
     if (upseller_password) {
-      // Em produção, isso seria criptografado com chaves secretas do servidor.
-      // Por enquanto, salvamos no campo upseller_password_encrypted de forma transparente.
       upsertData.upseller_password_encrypted = Buffer.from(upseller_password).toString('base64');
     }
 

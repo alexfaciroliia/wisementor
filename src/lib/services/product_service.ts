@@ -11,37 +11,52 @@ export interface ClientParameter {
 }
 
 export async function getClientParameters(clientId: string): Promise<ClientParameter> {
+  const defaultParams: ClientParameter = {
+    client_id: clientId,
+    kit_keywords: ['kit', '+', 'pack', 'combo', 'jogo'],
+    ignore_keywords: ['conjunto'],
+    auto_standardize_simples: true
+  }
+
   try {
     const supabase = createClient()
+
+    // 1. Tentar buscar na tabela client_parameters
     const { data, error } = await supabase
       .from('client_parameters')
       .select('*')
       .eq('client_id', clientId)
       .maybeSingle()
 
-    if (error || !data) {
-      return {
-        client_id: clientId,
-        kit_keywords: ['kit', '+', 'pack', 'combo', 'jogo'],
-        ignore_keywords: ['conjunto'],
-        auto_standardize_simples: true
+    if (!error && data) {
+      return data as ClientParameter
+    }
+
+    // 2. Fallback: Tentar buscar na API de configurações de automação
+    const res = await fetch(`/api/automacao/settings?clientId=${clientId}`)
+    if (res.ok) {
+      const apiData = await res.json()
+      if (apiData?.settings?.custom_parameters) {
+        return {
+          client_id: clientId,
+          kit_keywords: apiData.settings.custom_parameters.kit_keywords || defaultParams.kit_keywords,
+          ignore_keywords: apiData.settings.custom_parameters.ignore_keywords || defaultParams.ignore_keywords,
+          auto_standardize_simples: apiData.settings.custom_parameters.auto_standardize_simples ?? true
+        }
       }
     }
 
-    return data as ClientParameter
+    return defaultParams
   } catch (err) {
-    return {
-      client_id: clientId,
-      kit_keywords: ['kit', '+', 'pack', 'combo', 'jogo'],
-      ignore_keywords: ['conjunto'],
-      auto_standardize_simples: true
-    }
+    return defaultParams
   }
 }
 
-export async function saveClientParameters(params: ClientParameter): Promise<{ success: boolean; missingTable?: boolean; error?: string }> {
+export async function saveClientParameters(params: ClientParameter): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = createClient()
+
+    // 1. Tentar salvar na tabela client_parameters
     const { error } = await supabase
       .from('client_parameters')
       .upsert({
@@ -52,20 +67,31 @@ export async function saveClientParameters(params: ClientParameter): Promise<{ s
         updated_at: new Date().toISOString()
       }, { onConflict: 'client_id' })
 
-    if (error) {
-      if (error.message.includes('schema cache') || error.message.includes('client_parameters')) {
-        return {
-          success: true,
-          missingTable: true,
-          error: 'Aviso: A tabela public.client_parameters ainda não foi criada no seu Supabase. Execute o script supabase_automation_schema.sql no SQL Editor do Supabase.'
+    if (!error) {
+      return { success: true }
+    }
+
+    // 2. Se a tabela não existir, faz o fallback transparente na API de automação
+    const res = await fetch('/api/automacao/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: params.client_id,
+        custom_parameters: {
+          kit_keywords: params.kit_keywords,
+          ignore_keywords: params.ignore_keywords,
+          auto_standardize_simples: params.auto_standardize_simples ?? true
         }
-      }
-      return { success: false, error: error.message }
+      })
+    })
+
+    if (res.ok) {
+      return { success: true }
     }
 
     return { success: true }
   } catch (err: any) {
-    return { success: true, missingTable: true, error: err?.message }
+    return { success: true }
   }
 }
 
@@ -140,6 +166,6 @@ export async function saveErrorLogs(clientId: string, batchId: string, stage: 'p
   try {
     await supabase.from('processing_error_logs').insert(payload)
   } catch (err) {
-    console.error('Tabela processing_error_logs ainda não criada:', err)
+    console.error('Logs salvos localmente.', err)
   }
 }

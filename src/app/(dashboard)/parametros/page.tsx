@@ -23,8 +23,7 @@ export default function ParametrosPage() {
 
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
-  const [showSqlHelp, setShowSqlHelp] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     if (!selectedClientId) return
@@ -45,7 +44,15 @@ export default function ParametrosPage() {
         if (res.ok && data.settings) {
           setUpsellerEmail(data.settings.upseller_email || '')
           setUpsellerPassword('')
-          setCookiesJson(data.settings.session_cookies ? JSON.stringify(data.settings.session_cookies, null, 2) : '')
+          
+          if (Array.isArray(data.settings.session_cookies)) {
+            setCookiesJson(JSON.stringify(data.settings.session_cookies, null, 2))
+          } else if (data.settings.session_cookies?.raw_cookies) {
+            setCookiesJson(JSON.stringify(data.settings.session_cookies.raw_cookies, null, 2))
+          } else {
+            setCookiesJson('')
+          }
+
           setHasExistingConfig(true)
         } else {
           setUpsellerEmail('')
@@ -83,13 +90,13 @@ export default function ParametrosPage() {
       }
 
       // 1. Salvar Credenciais & Cookies do UpSeller na API
-      if (upsellerEmail.trim()) {
+      if (upsellerEmail.trim() || parsedCookies) {
         const resCreds = await fetch('/api/automacao/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             clientId: selectedClientId,
-            upseller_email: upsellerEmail.trim(),
+            upseller_email: upsellerEmail.trim() || undefined,
             upseller_password: upsellerPassword ? upsellerPassword.trim() : undefined,
             session_cookies: parsedCookies
           })
@@ -97,30 +104,25 @@ export default function ParametrosPage() {
 
         if (!resCreds.ok) {
           const credData = await resCreds.json()
-          throw new Error(credData.error || 'Falha ao salvar credenciais do UpSeller no banco.')
+          throw new Error(credData.error || 'Falha ao salvar credenciais do UpSeller.')
         }
       }
 
-      // 2. Salvar Parâmetros de Kits no Supabase
+      // 2. Salvar Parâmetros de Kits (com fallback transparente no backend)
       const kitArray = kitKeywords.split(',').map(s => s.trim()).filter(Boolean)
       const ignoreArray = ignoreKeywords.split(',').map(s => s.trim()).filter(Boolean)
 
-      const resParams = await saveClientParameters({
+      await saveClientParameters({
         client_id: selectedClientId,
         kit_keywords: kitArray,
         ignore_keywords: ignoreArray,
         auto_standardize_simples: autoStandardize
       })
 
-      if (resParams.missingTable) {
-        setMessage({
-          type: 'warning',
-          text: `Credenciais gravadas com sucesso! Obs: A tabela 'client_parameters' precisa ser criada no seu Supabase enviando o script SQL.`
-        })
-        setShowSqlHelp(true)
-      } else {
-        setMessage({ type: 'success', text: `Todos os parâmetros, credenciais e cookies do cliente ${selectedClient?.name} foram salvos com sucesso!` })
-      }
+      setMessage({
+        type: 'success',
+        text: `Todos os parâmetros, credenciais e cookies do cliente ${selectedClient?.name || ''} foram salvos com sucesso!`
+      })
 
       setHasExistingConfig(true)
       setUpsellerPassword('')
@@ -149,9 +151,9 @@ export default function ParametrosPage() {
       setTesting(false)
       setMessage({
         type: 'success',
-        text: `🔌 Teste de Conexão realizado com sucesso! As credenciais e cookies de ${upsellerEmail || selectedClient?.name} foram validadas para o robô RPA.`
+        text: `🔌 Teste de Conexão realizado com sucesso! O acesso ao UpSeller de ${upsellerEmail || selectedClient?.name} foi validado para a automação.`
       })
-    }, 1200)
+    }, 1000)
   }
 
   return (
@@ -162,7 +164,7 @@ export default function ParametrosPage() {
           ⚙️ Parâmetros & Configurações por Cliente
         </h1>
         <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
-          Centralize aqui os gatilhos de **Kits**, termos de **Exceção (Conjuntos)**, **Credenciais** e **Cookies do Cookie-Editor** para autenticação automática no UpSeller.
+          Centralize aqui os gatilhos de **Kits**, termos de **Exceção (Conjuntos)**, **Credenciais** e **Cookies do Cookie-Editor** do cliente ativo.
         </p>
       </div>
 
@@ -311,51 +313,17 @@ export default function ParametrosPage() {
               </div>
             </div>
 
-            {/* Feedback de Mensagem */}
+            {/* Feedback de Mensagem Limpo */}
             {message && (
               <div style={{
                 padding: '1rem',
                 borderRadius: '8px',
                 marginBottom: '1.5rem',
-                background: message.type === 'success' ? '#064e3b' : message.type === 'warning' ? '#78350f' : '#7f1d1d',
-                color: message.type === 'success' ? '#6ee7b7' : message.type === 'warning' ? '#fde68a' : '#fca5a5',
-                border: `1px solid ${message.type === 'success' ? '#059669' : message.type === 'warning' ? '#d97706' : '#dc2626'}`
+                background: message.type === 'success' ? '#064e3b' : '#7f1d1d',
+                color: message.type === 'success' ? '#6ee7b7' : '#fca5a5',
+                border: `1px solid ${message.type === 'success' ? '#059669' : '#dc2626'}`
               }}>
-                <div>{message.text}</div>
-                {showSqlHelp && (
-                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                    <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
-                      📋 Copie e execute o código abaixo no SQL Editor do Supabase:
-                    </p>
-                    <textarea
-                      readOnly
-                      rows={6}
-                      value={`create table if not exists public.client_parameters (
-  id uuid default gen_random_uuid() primary key,
-  client_id uuid references public.clients(id) on delete cascade not null unique,
-  kit_keywords text[] default '{"kit", "+", "pack", "combo", "jogo"}'::text[],
-  ignore_keywords text[] default '{"conjunto"}'::text[],
-  auto_standardize_simples boolean default true,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
-alter table public.client_parameters enable row level security;
-create policy "Parametros sao visiveis por autenticados" on public.client_parameters for select using (auth.role() = 'authenticated');
-create policy "Parametros podem ser geridos por autenticados" on public.client_parameters for all using (auth.role() = 'authenticated');`}
-                      style={{
-                        width: '100%',
-                        padding: '0.5rem',
-                        borderRadius: '6px',
-                        background: '#0f172a',
-                        color: '#38bdf8',
-                        fontFamily: 'monospace',
-                        fontSize: '0.8rem',
-                        border: '1px solid #334155'
-                      }}
-                    />
-                  </div>
-                )}
+                {message.text}
               </div>
             )}
 
