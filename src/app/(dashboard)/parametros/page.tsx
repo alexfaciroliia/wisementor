@@ -321,7 +321,41 @@ export default function ParametrosPage() {
                 color: message.type === 'success' ? '#6ee7b7' : message.type === 'warning' ? '#fde68a' : '#fca5a5',
                 border: `1px solid ${message.type === 'success' ? '#059669' : message.type === 'warning' ? '#d97706' : '#dc2626'}`
               }}>
-                {message.text}
+                <div>{message.text}</div>
+                {showSqlHelp && (
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                    <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
+                      📋 Copie e execute o código abaixo no SQL Editor do Supabase:
+                    </p>
+                    <textarea
+                      readOnly
+                      rows={6}
+                      value={`create table if not exists public.client_parameters (
+  id uuid default gen_random_uuid() primary key,
+  client_id uuid references public.clients(id) on delete cascade not null unique,
+  kit_keywords text[] default '{"kit", "+", "pack", "combo", "jogo"}'::text[],
+  ignore_keywords text[] default '{"conjunto"}'::text[],
+  auto_standardize_simples boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.client_parameters enable row level security;
+create policy "Parametros sao visiveis por autenticados" on public.client_parameters for select using (auth.role() = 'authenticated');
+create policy "Parametros podem ser geridos por autenticados" on public.client_parameters for all using (auth.role() = 'authenticated');`}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        borderRadius: '6px',
+                        background: '#0f172a',
+                        color: '#38bdf8',
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                        border: '1px solid #334155'
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
