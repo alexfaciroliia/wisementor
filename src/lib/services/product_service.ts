@@ -131,7 +131,7 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
 
 export async function fetchWarehouseProducts(clientId: string, spuFilter?: string): Promise<WarehouseProductItem[]> {
   const supabase = createClient()
-  let query = supabase.from('products').select('spu, sku, color, size, product_name').eq('client_id', clientId)
+  let query = supabase.from('products').select('spu, sku, color, size, product_name, image_url').eq('client_id', clientId)
 
   if (spuFilter) {
     query = query.ilike('spu', `%${spuFilter.trim()}%`)

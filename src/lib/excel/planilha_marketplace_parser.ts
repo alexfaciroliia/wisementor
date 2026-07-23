@@ -6,6 +6,7 @@ export interface WarehouseProductItem {
   color: string
   size: string
   product_name?: string
+  image_url?: string
 }
 
 export interface MarketplaceListingRow {
@@ -319,7 +320,7 @@ export function processMarketplaceListings(
       const kitRow: GeneratedKitRow = {
         kitSku,
         title: cleanTitle,
-        imageUrl: imgUrl,
+        imageUrl: pItem.image_url || imgUrl,
         sku: pItem.sku,
         skuQty: qty
       }
