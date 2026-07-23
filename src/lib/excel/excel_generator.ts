@@ -1,10 +1,8 @@
 import * as XLSX from 'xlsx'
-import * as fs from 'fs'
-import * as path from 'path'
 import { ParsedProductVariant, ErrorLogItem } from './planilha1_parser'
 import { GeneratedKitRow } from './planilha_marketplace_parser'
 
-// Cabeçalhos Oficiais Multilinha do UpSeller para Produtos Únicos
+// Cabeçalhos Oficiais Multilinha do UpSeller para Produtos Únicos (Planilha 2)
 const P2_EXACT_HEADERS = [
   'SKU*\n(Obrigatório, 1-200 caracteres e limite de números, letras e caracteres especiais）',
   'Título*\n(Obrigatório, 1-500 caracteres)',
@@ -28,7 +26,7 @@ const P2_EXACT_HEADERS = [
   'Link do Fornecedor'
 ]
 
-// Cabeçalhos Oficiais Multilinha do UpSeller para Produtos Variantes
+// Cabeçalhos Oficiais Multilinha do UpSeller para Produtos Variantes (Planilha 3)
 const P3_EXACT_HEADERS = [
   'SPU*\n(Obrigatório, 1-200 caracteres e limite de números, letras e caracteres especiais)',
   'SKU*\n(Obrigatório, 1-200 caracteres e limite de números, letras e caracteres especiais)',
@@ -69,37 +67,11 @@ export function generateWarehouseExcel(
   errors: ErrorLogItem[],
   isUnique: boolean
 ): ArrayBuffer {
-  // Caminhos para carregar o arquivo modelo original
-  const templateFileName = isUnique
-    ? 'Planilha 2 - Modelo UpSeller Produtos Únicos.xlsx'
-    : 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx'
-  
-  const publicTemplatePath = isUnique
-    ? path.join(process.cwd(), 'public', 'templates', 'modelo_produtos_unicos.xlsx')
-    : path.join(process.cwd(), 'public', 'templates', 'modelo_produtos_variantes.xlsx')
-
-  const rootTemplatePath = path.join(process.cwd(), templateFileName)
-
-  let wb: XLSX.WorkBook | null = null
-
-  // Tentar carregar modelo existente no sistema
-  try {
-    if (fs.existsSync(rootTemplatePath)) {
-      wb = XLSX.readFile(rootTemplatePath, { cellStyles: true })
-    } else if (fs.existsSync(publicTemplatePath)) {
-      wb = XLSX.readFile(publicTemplatePath, { cellStyles: true })
-    }
-  } catch (err) {
-    console.warn('Modelo original de planilha não encontrado via fs, gerando com formatação idêntica:', err)
-  }
+  const wb = XLSX.utils.book_new()
 
   const sheetName = isUnique ? 'Import_Single_Template_BR01' : 'Import_Variants_Template_BR01'
 
-  if (!wb) {
-    wb = XLSX.utils.book_new()
-  }
-
-  // Preparar dados das linhas
+  // Preparar dados das linhas com os cabeçalhos multilinha exatos do UpSeller
   const rowsData: any[][] = [isUnique ? P2_EXACT_HEADERS : P3_EXACT_HEADERS]
 
   if (isUnique) {
@@ -165,22 +137,15 @@ export function generateWarehouseExcel(
     })
   }
 
-  // Criar planilha principal mantendo o nome de aba oficial do UpSeller
+  // Criar planilha principal com o nome de aba oficial do UpSeller
   const wsMain = XLSX.utils.aoa_to_sheet(rowsData)
-  
-  // Garantir a substituição/inserção da aba de dados principal
-  wb.Sheets[sheetName] = wsMain
-  if (!wb.SheetNames.includes(sheetName)) {
-    wb.SheetNames.unshift(sheetName)
-  }
+  XLSX.utils.book_append_sheet(wb, wsMain, sheetName)
 
-  // Garantir existência da aba 'Origin' para validação do UpSeller
-  if (!wb.SheetNames.includes('Origin')) {
-    const wsOrigin = XLSX.utils.aoa_to_sheet([['UpSeller Import Template']])
-    XLSX.utils.book_append_sheet(wb, wsOrigin, 'Origin')
-  }
+  // Criar aba 'Origin' exigida pelo validador do UpSeller
+  const wsOrigin = XLSX.utils.aoa_to_sheet([['UpSeller Import Template']])
+  XLSX.utils.book_append_sheet(wb, wsOrigin, 'Origin')
 
-  // Adicionar aba "Erros" de auditoria
+  // Criar aba "Erros" para auditoria
   const errorHeaders = [
     'Tipo da ocorrência',
     'Linha da planilha do cliente',
@@ -209,10 +174,7 @@ export function generateWarehouseExcel(
   })
 
   const wsErrors = XLSX.utils.aoa_to_sheet(errorRowsData)
-  wb.Sheets['Erros'] = wsErrors
-  if (!wb.SheetNames.includes('Erros')) {
-    XLSX.utils.book_append_sheet(wb, wsErrors, 'Erros')
-  }
+  XLSX.utils.book_append_sheet(wb, wsErrors, 'Erros')
 
   return XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
 }
