@@ -45,18 +45,66 @@ export default function ProdutosPage() {
     }
   }
 
-  // Baixar Planilha 2 (Produtos Únicos)
-  function downloadUniqueExcel() {
+  // Baixar Planilha 2 (Produtos Únicos) com preservação total de formatação do modelo original
+  async function downloadUniqueExcel() {
     if (!parsedData) return
-    const buffer = generateWarehouseExcel(parsedData.uniqueProducts, parsedData.errorLogs, true)
-    blobDownload(buffer, 'Planilha 2 - Modelo UpSeller Produtos Unicos.xlsx')
+    try {
+      const res = await fetch('/api/export-warehouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'unique',
+          products: parsedData.uniqueProducts,
+          errors: parsedData.errorLogs
+        })
+      })
+      if (!res.ok) {
+        const buffer = generateWarehouseExcel(parsedData.uniqueProducts, parsedData.errorLogs, true)
+        blobDownload(buffer, 'Planilha 2 - Modelo UpSeller Produtos Únicos.xlsx')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Planilha 2 - Modelo UpSeller Produtos Únicos.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      const buffer = generateWarehouseExcel(parsedData.uniqueProducts, parsedData.errorLogs, true)
+      blobDownload(buffer, 'Planilha 2 - Modelo UpSeller Produtos Únicos.xlsx')
+    }
   }
 
-  // Baixar Planilha 3 (Produtos Variantes)
-  function downloadVariantExcel() {
+  // Baixar Planilha 3 (Produtos Variantes) com preservação total de formatação do modelo original
+  async function downloadVariantExcel() {
     if (!parsedData) return
-    const buffer = generateWarehouseExcel(parsedData.variantProducts, parsedData.errorLogs, false)
-    blobDownload(buffer, 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx')
+    try {
+      const res = await fetch('/api/export-warehouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'variant',
+          products: parsedData.variantProducts,
+          errors: parsedData.errorLogs
+        })
+      })
+      if (!res.ok) {
+        const buffer = generateWarehouseExcel(parsedData.variantProducts, parsedData.errorLogs, false)
+        blobDownload(buffer, 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      const buffer = generateWarehouseExcel(parsedData.variantProducts, parsedData.errorLogs, false)
+      blobDownload(buffer, 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx')
+    }
   }
 
   // Auxiliar para download no navegador
