@@ -304,6 +304,9 @@ export function processMarketplaceListings(
       }
     })
 
+    // Ordenar as cores em ordem alfabética para garantir a regra anti-duplicidade (ex: Azul Bebe_Bege)
+    colorsFormatted.sort((a, b) => a.localeCompare(b))
+
     const sampleSize = consolidatedList[0]?.item.size || rawSizeStr
     const cleanSizeFormatted = removeAccentsAndCedilla(sampleSize)
 

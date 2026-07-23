@@ -269,7 +269,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
 
     let spu = ''
     if (kitInfo.isKit && kitInfo.kitQty) {
-      spu = `${cleanSupplier}-KIT${kitInfo.kitQty}-${cleanModel}`
+      spu = `KIT${kitInfo.kitQty}-${cleanSupplier}-${cleanModel}`
       errorLogs.push({
         type: 'AVISO',
         clientRow: r + 1,
@@ -277,7 +277,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
         field: 'SPU',
         originalValue: `${cleanSupplier}-${cleanModel}`,
         correctedValue: spu,
-        message: `Inclusão da tag KIT${kitInfo.kitQty} no SPU por tratar-se de kit nativo.`,
+        message: `Inclusão da tag KIT${kitInfo.kitQty} no início do SPU por tratar-se de kit nativo.`,
         generatedFile: 'Produtos Variantes',
         upSellerLineRange: '-'
       })
