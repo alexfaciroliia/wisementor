@@ -117,11 +117,24 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
     updated_at: new Date().toISOString()
   }))
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('products')
     .upsert(payload, { onConflict: 'client_id,sku' })
 
   if (error) {
+    // Se a coluna is_kit_native não existir no Supabase, tenta novamente sem a coluna de forma transparente
+    if (error.message.includes('is_kit_native') || error.message.includes('column') || error.message.includes('schema cache')) {
+      const fallbackPayload = payload.map(({ is_kit_native, ...rest }) => rest)
+      const retryRes = await supabase
+        .from('products')
+        .upsert(fallbackPayload, { onConflict: 'client_id,sku' })
+
+      if (!retryRes.error) {
+        return { success: true, savedCount: payload.length }
+      }
+      return { success: false, savedCount: 0, error: retryRes.error.message }
+    }
+
     console.error('Erro ao salvar produtos no Supabase:', error)
     return { success: false, savedCount: 0, error: error.message }
   }
