@@ -331,21 +331,34 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
       const cleanColor = colorRaw ? normalizeColorName(colorRaw, r + 1, prodTitleRaw, errorLogs) : ''
 
       // Validação do link de imagem
-      if (imgLinkRaw && !imgLinkRaw.startsWith('http://') && !imgLinkRaw.startsWith('https://')) {
-        errorLogs.push({
-          type: 'ERRO',
-          clientRow: r + 1,
-          productName: prodTitleRaw,
-          field: 'Link Imagem',
-          originalValue: imgLinkRaw,
-          correctedValue: imgLinkRaw,
-          message: 'O link da imagem deve iniciar com http:// ou https://.',
-          generatedFile: 'Produtos Variantes',
-          upSellerLineRange: '-'
-        })
-      }
-
-      if (!imgLinkRaw) {
+      if (imgLinkRaw) {
+        if (!imgLinkRaw.startsWith('http://') && !imgLinkRaw.startsWith('https://')) {
+          errorLogs.push({
+            type: 'ERRO',
+            clientRow: r + 1,
+            productName: prodTitleRaw,
+            field: 'Link Imagem',
+            originalValue: imgLinkRaw,
+            correctedValue: imgLinkRaw,
+            message: 'O link da imagem deve iniciar com http:// ou https://.',
+            generatedFile: 'Produtos Variantes',
+            upSellerLineRange: '-'
+          })
+        }
+        if (!/\.(jpg|jpeg|png)($|\?)/i.test(imgLinkRaw)) {
+          errorLogs.push({
+            type: 'ERRO',
+            clientRow: r + 1,
+            productName: prodTitleRaw,
+            field: 'Link Imagem',
+            originalValue: imgLinkRaw,
+            correctedValue: imgLinkRaw,
+            message: 'Apenas links de imagem nos formatos JPG/JPEG/PNG são suportados pelo UpSeller.',
+            generatedFile: 'Produtos Variantes',
+            upSellerLineRange: '-'
+          })
+        }
+      } else {
         errorLogs.push({
           type: 'ERRO',
           clientRow: r + 1,

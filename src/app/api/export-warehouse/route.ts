@@ -84,7 +84,6 @@ const DATA_FONT: Partial<ExcelJS.Font> = {
 }
 
 // ── Larguras das colunas — idênticas nas colunas equivalentes de P2 e P3 ────
-// P2 usa as mesmas larguras que a P3 usa para as mesmas colunas funcionais.
 const P2_COL_WIDTHS = [
   32.7522123893805,  // A: SKU*
   41,                // B: Título*            (= P3 col C)
@@ -142,13 +141,14 @@ const P3_COL_WIDTHS = [
   26                 // AE: Link do Fornecedor
 ]
 
-// ── Cria a planilha do UpSeller do zero com exceljs ─────────────────────────
+// ── Cria a planilha do UpSeller do zero com exceljs e formatações exatas das células ──
 function buildWorksheet(
   wb: ExcelJS.Workbook,
   sheetName: string,
   headers: string[],
   colWidths: number[],
-  dataRows: (string | number)[][]
+  dataRows: any[][],
+  isUnique: boolean
 ): void {
   const ws = wb.addWorksheet(sheetName)
 
@@ -170,8 +170,44 @@ function buildWorksheet(
   dataRows.forEach((values) => {
     const row = ws.addRow(values)
     row.height = 55.5
-    row.eachCell({ includeEmpty: false }, (cell) => {
+    
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
       cell.font = DATA_FONT
+      cell.alignment = { vertical: 'top' }
+
+      if (isUnique) {
+        // Formatações exatas da Planilha 2 (Produtos Únicos)
+        if (colNumber === 5 || colNumber === 6 || colNumber === 13 || colNumber === 14 || colNumber === 15) {
+          // Preço de varejo (E), Custo de compra (F), Comprimento (M), Largura (N), Altura (O)
+          cell.numFmt = '0.00_ '
+        } else if (colNumber === 7 || colNumber === 12) {
+          // Quantidade (G), Peso (L)
+          cell.numFmt = '0_ '
+          if (colNumber === 7) cell.alignment = { horizontal: 'right', vertical: 'top' }
+        } else if (colNumber === 8 || colNumber === 9 || colNumber === 11 || colNumber === 20) {
+          // Estante (H), Código de Barras (I), Imagem (K), Link Fornecedor (T)
+          cell.numFmt = '@'
+          if (colNumber === 8) cell.alignment = { horizontal: 'left', vertical: 'top' }
+          if (colNumber === 9) cell.alignment = { horizontal: 'center', vertical: 'top' }
+          if (colNumber === 11 || colNumber === 20) cell.alignment = { vertical: 'top', wrapText: true }
+        }
+      } else {
+        // Formatações exatas da Planilha 3 (Produtos Variantes)
+        if (colNumber === 16 || colNumber === 17 || colNumber === 24 || colNumber === 25 || colNumber === 26) {
+          // Preço de varejo (P), Custo de compra (Q), Comprimento (X), Largura (Y), Altura (Z)
+          cell.numFmt = '0.00_ '
+        } else if (colNumber === 18 || colNumber === 23) {
+          // Quantidade (R), Peso (W)
+          cell.numFmt = '0_ '
+          if (colNumber === 18) cell.alignment = { horizontal: 'right', vertical: 'top' }
+        } else if (colNumber === 19 || colNumber === 20 || colNumber === 22 || colNumber === 31) {
+          // Estante (S), Código de Barras (T), Imagem (V), Link Fornecedor (AE)
+          cell.numFmt = '@'
+          if (colNumber === 19) cell.alignment = { horizontal: 'left', vertical: 'top' }
+          if (colNumber === 20) cell.alignment = { horizontal: 'center', vertical: 'top' }
+          if (colNumber === 22 || colNumber === 31) cell.alignment = { vertical: 'top', wrapText: true }
+        }
+      }
     })
   })
 }
@@ -189,64 +225,64 @@ export async function POST(req: Request) {
     const sheetName = isUnique ? 'Import_Single_Template_BR01' : 'Import_Variants_Template_BR01'
 
     // ── Montar linhas de dados reais ─────────────────────────────────────────
-    const dataRows: (string | number)[][] = isUnique
+    const dataRows: any[][] = isUnique
       ? products.map((p) => [
-          p.sku || '',          // A: SKU*
-          p.title || '',        // B: Título*
-          '',                   // C: Apelido do Produto
-          'N',                  // D: Usar apelido como título da NFe
-          0,                    // E: Preço de varejo
-          p.costPrice || 0,     // F: Custo de Compra
-          '',                   // G: Quantidade
-          '',                   // H: N° do Estante
-          '',                   // I: Código de Barras
-          '',                   // J: Apelido de SKU
-          p.imageUrl || '',     // K: Imagem
-          1000,                 // L: Peso (g)
-          33,                   // M: Comprimento (cm)
-          22,                   // N: Largura (cm)
-          12,                   // O: Altura (cm)
-          '',                   // P: NCM
-          '',                   // Q: CEST
-          'UN',                 // R: Unidade
-          '0',                  // S: Origem
-          ''                    // T: Link do Fornecedor
+          p.sku || '',                      // A: SKU*
+          p.title || '',                    // B: Título*
+          '',                               // C: Apelido do Produto
+          'N',                              // D: Usar apelido como título da NFe
+          0,                                // E: Preço de varejo (numérico 0)
+          Number(p.costPrice) || 0,         // F: Custo de Compra (numérico)
+          '',                               // G: Quantidade
+          '',                               // H: N° do Estante
+          '',                               // I: Código de Barras
+          '',                               // J: Apelido de SKU
+          p.imageUrl || '',                 // K: Imagem
+          1000,                             // L: Peso (g) (numérico)
+          33,                               // M: Comprimento (cm) (numérico)
+          22,                               // N: Largura (cm) (numérico)
+          12,                               // O: Altura (cm) (numérico)
+          '',                               // P: NCM
+          '',                               // Q: CEST
+          'UN',                             // R: Unidade
+          '0',                              // S: Origem
+          ''                                // T: Link do Fornecedor
         ])
       : products.map((p) => [
-          p.spu || '',          // A: SPU*
-          p.sku || '',          // B: SKU*
-          p.title || '',        // C: Título*
-          '',                   // D: Apelido do Produto
-          'N',                  // E: Usar apelido como título da NFe
-          'COR',                // F: Variantes1*
-          p.color || '',        // G: Valor da Variante1*
-          'TAMANHO',            // H: Variantes2
-          p.size || '',         // I: Valor da Variante2
-          '',                   // J: Variantes3
-          '',                   // K: Valor da Variante3
-          '',                   // L: Variantes4
-          '',                   // M: Valor da Variante4
-          '',                   // N: Variantes5
-          '',                   // O: Valor da Variante5
-          0,                    // P: Preço de varejo
-          p.costPrice || 0,     // Q: Custo de Compra
-          '',                   // R: Quantidade
-          '',                   // S: N° do Estante
-          '',                   // T: Código de Barras
-          '',                   // U: Apelido de SKU
-          p.imageUrl || '',     // V: Imagem
-          1000,                 // W: Peso (g)
-          33,                   // X: Comprimento (cm)
-          22,                   // Y: Largura (cm)
-          12,                   // Z: Altura (cm)
-          '',                   // AA: NCM
-          '',                   // AB: CEST
-          'UN',                 // AC: Unidade
-          '0',                  // AD: Origem
-          ''                    // AE: Link do Fornecedor
+          p.spu || '',                      // A: SPU*
+          p.sku || '',                      // B: SKU*
+          p.title || '',                    // C: Título*
+          '',                               // D: Apelido do Produto
+          'N',                              // E: Usar apelido como título da NFe
+          'COR',                            // F: Variantes1*
+          p.color || '',                    // G: Valor da Variante1*
+          'TAMANHO',                        // H: Variantes2
+          p.size || '',                     // I: Valor da Variante2
+          '',                               // J: Variantes3
+          '',                               // K: Valor da Variante3
+          '',                               // L: Variantes4
+          '',                               // M: Valor da Variante4
+          '',                               // N: Variantes5
+          '',                               // O: Valor da Variante5
+          0,                                // P: Preço de varejo (numérico 0)
+          Number(p.costPrice) || 0,         // Q: Custo de Compra (numérico)
+          '',                               // R: Quantidade
+          '',                               // S: N° do Estante
+          '',                               // T: Código de Barras
+          '',                               // U: Apelido de SKU
+          p.imageUrl || '',                 // V: Imagem
+          1000,                             // W: Peso (g) (numérico)
+          33,                               // X: Comprimento (cm) (numérico)
+          22,                               // Y: Largura (cm) (numérico)
+          12,                               // Z: Altura (cm) (numérico)
+          '',                               // AA: NCM
+          '',                               // AB: CEST
+          'UN',                             // AC: Unidade
+          '0',                              // AD: Origem
+          ''                                // AE: Link do Fornecedor
         ])
 
-    // ── Construir workbook do zero (sem depender de template em disco) ────────
+    // ── Construir workbook do zero ───────────────────────────────────────────
     const wb = new ExcelJS.Workbook()
 
     // Aba principal com dados do cliente
@@ -255,7 +291,8 @@ export async function POST(req: Request) {
       sheetName,
       isUnique ? P2_HEADERS : P3_HEADERS,
       isUnique ? P2_COL_WIDTHS : P3_COL_WIDTHS,
-      dataRows
+      dataRows,
+      isUnique
     )
 
     // Aba 'Origin' — exigida pelo validador do UpSeller
