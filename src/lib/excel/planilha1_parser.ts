@@ -291,14 +291,44 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
     // Expandir tamanhos
     const expandedSizes = expandSizes(sizeRaw, r + 1, prodTitleRaw, errorLogs)
 
-    // Iterar pelos pares de Cor e Imagem
+    // Coletar variações de cores presentes na linha
+    const foundColorEntries: { colorRaw: string; imgLinkRaw: string }[] = []
     colorImageCols.forEach(({ colorCol, imgCol }) => {
-      const colorRaw = String(row[colorCol] || '').trim()
-      const imgLinkRaw = String(row[imgCol] || '').trim()
+      const cVal = String(row[colorCol] || '').trim()
+      const iVal = String(row[imgCol] || '').trim()
+      if (cVal || iVal) {
+        foundColorEntries.push({ colorRaw: cVal, imgLinkRaw: iVal })
+      }
+    })
 
-      if (!colorRaw) return
+    // Se nenhuma cor foi preenchida nas colunas de cor, considerar 1 entrada com cor vazia
+    if (foundColorEntries.length === 0) {
+      // Buscar se há algum link de imagem em qualquer coluna de imagem
+      let fallbackImg = ''
+      colorImageCols.forEach(({ imgCol }) => {
+        if (!fallbackImg && row[imgCol]) fallbackImg = String(row[imgCol]).trim()
+      })
+      foundColorEntries.push({ colorRaw: '', imgLinkRaw: fallbackImg })
+    }
 
-      const cleanColor = normalizeColorName(colorRaw, r + 1, prodTitleRaw, errorLogs)
+    // Se SPU ficar totalmente vazio (sem fornecedor e sem modelo), registrar erro
+    if (!spu) {
+      errorLogs.push({
+        type: 'ERRO',
+        clientRow: r + 1,
+        productName: prodTitleRaw,
+        field: 'SPU / SKU',
+        originalValue: '',
+        correctedValue: '',
+        message: 'Produto sem Fornecedor e sem Modelo informados. Não foi possível determinar o identificador de SPU/SKU.',
+        generatedFile: 'Produtos Unicos',
+        upSellerLineRange: '-'
+      })
+    }
+
+    // Iterar pelas entradas de Cor e Imagem
+    foundColorEntries.forEach(({ colorRaw, imgLinkRaw }) => {
+      const cleanColor = colorRaw ? normalizeColorName(colorRaw, r + 1, prodTitleRaw, errorLogs) : ''
 
       // Validação do link de imagem
       if (imgLinkRaw && !imgLinkRaw.startsWith('http://') && !imgLinkRaw.startsWith('https://')) {
@@ -323,8 +353,8 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
           field: 'Link Imagem',
           originalValue: '',
           correctedValue: '',
-          message: `Cor '${cleanColor}' sem link de imagem associado.`,
-          generatedFile: 'Produtos Variantes',
+          message: cleanColor ? `Cor '${cleanColor}' sem link de imagem associado.` : 'Produto sem link de imagem associado.',
+          generatedFile: 'Produtos Unicos',
           upSellerLineRange: '-'
         })
       }
@@ -334,12 +364,16 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
         const cleanSize = sanitizeText(sizeVal)
         // SKU = SPU-Cor-Tamanho (sem hífens sobrando se algum campo estiver vazio)
         const skuParts = [spu, cleanColor, cleanSize].filter(Boolean)
-        const sku = skuParts.join('-').replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ')
+        let sku = skuParts.join('-').replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ')
+
+        if (!sku) {
+          sku = `PROD-LINHA-${r + 1}`
+        }
 
         allVariants.push({
-          spu,
+          spu: spu || `PROD-LINHA-${r + 1}`,
           sku,
-          title: prodTitleRaw,
+          title: prodTitleRaw || cleanModel || cleanSupplier || `Produto Linha ${r + 1}`,
           color: cleanColor,
           size: cleanSize,
           costPrice: priceRaw,
