@@ -121,12 +121,12 @@ export function normalizeColorName(colorRaw: string, rowIdx: number, prodName: s
 
 // 4. Expansão de Tamanhos
 export function expandSizes(sizeRaw: string, rowIdx: number, prodName: string, errors: ErrorLogItem[]): string[] {
-  if (!sizeRaw) return ['U']
+  if (!sizeRaw) return ['']
   const cleanStr = sizeRaw.trim()
 
-  // Regra 6.6: Tamanho Único
+  // Regra 6.6: Tamanho Único (não adicionar 'U' como tamanho)
   if (/^(unico|único|u)$/i.test(cleanStr)) {
-    return ['U']
+    return ['']
   }
 
   // Regra 6.3: Conectivo "a" (NÃO expandir) e.g. "34 a 40"
@@ -406,17 +406,6 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
     // Regra 7: Apenas é Produto Único se tiver exatamente 1 Cor E 1 Tamanho
     if (distinctColors.size === 1 && distinctSizes.size === 1) {
       variants.forEach(v => uniqueProducts.push(v))
-      errorLogs.push({
-        type: 'CLASSIFICACAO',
-        clientRow: variants[0].clientRow,
-        productName: variants[0].title,
-        field: 'Classificacao',
-        originalValue: spuKey,
-        correctedValue: 'Produto Unico',
-        message: `Produto ${spuKey} classificado como Produto Único (possui 1 cor e 1 tamanho simultaneamente).`,
-        generatedFile: 'Produtos Unicos',
-        upSellerLineRange: '-'
-      })
     } else {
       variants.forEach(v => variantProducts.push(v))
     }
