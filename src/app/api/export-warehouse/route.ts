@@ -43,6 +43,56 @@ export async function POST(req: Request) {
       }
     })
 
+    // ─── Padronizar cabeçalho (linha 1) para garantir visual idêntico entre P2 e P3 ───
+    // Mesmo fill, fonte, alinhamento e altura — independente do arquivo modelo de origem.
+    const HEADER_STYLE = {
+      fill: { patternType: 'solid', fgColor: { rgb: 'FF85D4E6' } },
+      font: { name: '微软雅黑', sz: 10, bold: true, color: { rgb: 'FF000000' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+    }
+    const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c: C })
+      if (ws[addr]) ws[addr].s = HEADER_STYLE
+    }
+
+    // Forçar altura da linha 1 para 58.5 (padrão da P3) em ambas as planilhas
+    if (!ws['!rows']) ws['!rows'] = []
+    ws['!rows'][0] = { hpt: 58.5, hpx: 58.5 }
+
+    // Para a P2, ajustar larguras das colunas comuns para coincidir com as larguras da P3
+    // (mapeamento: coluna funcional → largura usada na P3 para a mesma coluna)
+    if (isUnique) {
+      const p2ColWidths: Record<string, number> = {
+        A: 32.7522123893805,  // SKU*
+        B: 41,                 // Título*          (P3: C=41)
+        C: 20.6637168141593,  // Apelido           (P3: D=20.66)
+        D: 22.1150442477876,  // NFe               (P3: E=22.11)
+        E: 18,                 // Preço de varejo   (P3: P=18)
+        F: 18,                 // Custo de Compra   (P3: Q=18)
+        G: 35.5044247787611,  // Quantidade        (P3: R=35.50)
+        H: 35.5044247787611,  // N° do Estante     (P3: S=35.50)
+        I: 26,                 // Código de Barras  (P3: T=26)
+        J: 42.1150442477876,  // Apelido de SKU    (P3: U=42.11)
+        K: 14,                 // Imagem            (P3: V=14)
+        L: 13,                 // Peso (g)          (P3: W=13)
+        M: 19,                 // Comprimento (cm)  (P3: X=19)
+        N: 16.3805309734513,  // Largura (cm)      (P3: Y=16.38)
+        O: 16,                 // Altura (cm)       (P3: Z=16)
+        P: 13,                 // NCM               (P3: AA=13)
+        Q: 13,                 // CEST              (P3: AB=13)
+        R: 19,                 // Unidade           (P3: AC=19)
+        S: 24,                 // Origem            (P3: AD=24)
+        T: 26                  // Link do Fornecedor (P3: AE=26)
+      }
+      const cols = ws['!cols'] ?? []
+      Object.entries(p2ColWidths).forEach(([letter, wpx]) => {
+        const idx = letter.charCodeAt(0) - 65 // A=0, B=1...
+        cols[idx] = { wch: wpx }
+      })
+      ws['!cols'] = cols
+    }
+
     // Preencher com a grade de produtos do cliente
     if (isUnique) {
       products.forEach((p, idx) => {
