@@ -268,21 +268,22 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
     const cleanModel = sanitizeText(modelRaw)
 
     let spu = ''
+    const spuParts = [cleanSupplier, cleanModel].filter(Boolean)
     if (kitInfo.isKit && kitInfo.kitQty) {
-      spu = `KIT${kitInfo.kitQty}-${cleanSupplier}-${cleanModel}`
+      spu = `KIT${kitInfo.kitQty}-${spuParts.join('-')}`
       errorLogs.push({
         type: 'AVISO',
         clientRow: r + 1,
         productName: prodTitleRaw,
         field: 'SPU',
-        originalValue: `${cleanSupplier}-${cleanModel}`,
+        originalValue: spuParts.join('-'),
         correctedValue: spu,
         message: `Inclusão da tag KIT${kitInfo.kitQty} no início do SPU por tratar-se de kit nativo.`,
         generatedFile: 'Produtos Variantes',
         upSellerLineRange: '-'
       })
     } else {
-      spu = `${cleanSupplier}-${cleanModel}`
+      spu = spuParts.join('-')
     }
 
     spu = sanitizeText(spu)
@@ -331,8 +332,9 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
       // Gerar uma variante para cada tamanho expandido
       expandedSizes.forEach(sizeVal => {
         const cleanSize = sanitizeText(sizeVal)
-        // SKU = SPU-Cor-Tamanho
-        const sku = `${spu}-${cleanColor}-${cleanSize}`.replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ')
+        // SKU = SPU-Cor-Tamanho (sem hífens sobrando se algum campo estiver vazio)
+        const skuParts = [spu, cleanColor, cleanSize].filter(Boolean)
+        const sku = skuParts.join('-').replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ')
 
         allVariants.push({
           spu,
