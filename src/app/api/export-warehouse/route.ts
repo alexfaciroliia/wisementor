@@ -1,17 +1,73 @@
 import { NextResponse } from 'next/server'
-import * as fs from 'fs'
-import * as path from 'path'
 import ExcelJS from 'exceljs'
 import { ParsedProductVariant, ErrorLogItem } from '@/lib/excel/planilha1_parser'
 
-// ── Estilo padrão do cabeçalho UpSeller (extraído do modelo original) ──────────
+// ── Cabeçalhos exatos do UpSeller ────────────────────────────────────────────
+const P2_HEADERS = [
+  'SKU*\n(Obrigatório, 1-200 caracteres e limite de números, letras e caracteres especiais）',
+  'Título*\n(Obrigatório, 1-500 caracteres)',
+  'Apelido do Produto\n(1-500 caracteres)',
+  'Usar apelido como título da NFe',
+  'Preço de varejo\n(limite 0-999999999)',
+  'Custo de Compra\n(limite 0-999999999)',
+  'Quantidade\n(limite 0-999999999, Se não for preenchido, não será registrado na Lista de Estoque)',
+  'N° do Estante\n(Apenas estantes existentes, serão filtrados se o estante selecionado estiver cheio ou ficará cheio após a importação)',
+  'Código de Barras\n(Limite de 8 a 14 caracteres, separe vários códigos de barras com vírgulas)',
+  'Apelido de SKU\n（Limite a letras, números e caracteres especiais; separe vários apelidos de SKU com vírgulas; máximo de 20 entradas）',
+  'Imagem',
+  'Peso (g)\n(limite 1-999999)',
+  'Comprimento (cm)\n(limite 1-999999)',
+  'Largura (cm)\n(limite 1-999999)',
+  'Altura (cm)\n(limite 1-999999)',
+  'NCM\n(limite 8 dígitos)',
+  'CEST\n(limite 7 dígitos)',
+  'Unidade\n(Selecionar UN/KG/Par)',
+  'Origem\n(Selecionar 0/1/2/3/4/5/6/7/8)',
+  'Link do Fornecedor'
+]
+
+const P3_HEADERS = [
+  'SPU*\n(Obrigatório, 1-200 caracteres e limite de números, letras e caracteres especiais)',
+  'SKU*\n(Obrigatório, 1-200 caracteres e limite de números, letras e caracteres especiais)',
+  'Título*\n(Obrigatório, 1-500 caracteres)',
+  'Apelido do Produto\n(1-500 caracteres)',
+  'Usar apelido como título da NFe',
+  'Variantes1*\n(Obrigatório, 1-14 caracteres)',
+  'Valor da Variante1*\n(Obrigatório, 1-30 caracteres)',
+  'Variantes2\n(limite 1-14 caracteres)',
+  'Valor da Variante2\n(limite 1-30 caracteres)',
+  'Variantes3\n(limite 1-14 caracteres)',
+  'Valor da Variante3\n(limite 1-30 caracteres)',
+  'Variantes4\n(limite 1-14 caracteres)',
+  'Valor da Variante4\n(limite 1-30 caracteres)',
+  'Variantes5\n(limite 1-14 caracteres)',
+  'Valor da Variante5\n(limite 1-30 caracteres)',
+  'Preço de varejo\n(limite 0-999999999)',
+  'Custo de Compra\n(limite 0-999999999)',
+  'Quantidade\n(limite 0-999999999, Se não for preenchido, não será registrado na Lista de Estoque)',
+  'N° do Estante\n(Apenas estantes existentes, serão filtrados se o estante selecionado estiver cheio ou ficará cheio após a importação)',
+  'Código de Barras\n(Limite de 8 a 14 caracteres, separe vários códigos de barras com vírgulas)',
+  'Apelido de SKU\n（Limite a letras, números e caracteres especiais; separe vários apelidos de SKU com vírgulas; máximo de 20 entradas）',
+  'Imagem',
+  'Peso (g)\n(limite 1-999999)',
+  'Comprimento (cm)\n(limite 1-999999)',
+  'Largura (cm)\n(limite 1-999999)',
+  'Altura (cm)\n(limite 1-999999)',
+  'NCM\n(limite 8 dígitos)',
+  'CEST\n(limite 7 dígitos)',
+  'Unidade\n(Selecionar UN/KG/Par)',
+  'Origem\n(Selecionar 0/1/2/3/4/5/6/7/8)',
+  'Link do Fornecedor'
+]
+
+// ── Estilo do cabeçalho idêntico ao modelo UpSeller (extraído das planilhas originais) ──
 const HEADER_FILL: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
-  fgColor: { argb: 'FF85D4E6' }   // azul claro UpSeller
+  fgColor: { argb: 'FF85D4E6' }
 }
 const HEADER_FONT: Partial<ExcelJS.Font> = {
-  name: '微软雅黑',                  // Microsoft YaHei (fonte do modelo)
+  name: '微软雅黑',
   size: 10,
   bold: true,
   color: { argb: 'FF000000' }
@@ -21,37 +77,103 @@ const HEADER_ALIGNMENT: Partial<ExcelJS.Alignment> = {
   vertical: 'middle',
   wrapText: true
 }
-const HEADER_ROW_HEIGHT = 58.5    // altura padrão (mesma para P2 e P3)
 const DATA_FONT: Partial<ExcelJS.Font> = {
   name: '微软雅黑',
   size: 10,
   color: { argb: 'FF000000' }
 }
-const DATA_ROW_HEIGHT = 55.5
 
-// ── Larguras das colunas da P2 alinhadas às colunas correspondentes da P3 ──────
-// Garante que colunas com o mesmo significado tenham a mesma largura nas duas planilhas.
-const P2_COL_WIDTHS: Record<string, number> = {
-  A: 32.7522123893805,  // SKU*
-  B: 41,                 // Título*            (= P3 col C)
-  C: 20.6637168141593,  // Apelido            (= P3 col D)
-  D: 22.1150442477876,  // Usar apelido NFe   (= P3 col E)
-  E: 18,                 // Preço de varejo    (= P3 col P)
-  F: 18,                 // Custo de Compra    (= P3 col Q)
-  G: 35.5044247787611,  // Quantidade         (= P3 col R)
-  H: 35.5044247787611,  // N° do Estante      (= P3 col S)
-  I: 26,                 // Código de Barras   (= P3 col T)
-  J: 42.1150442477876,  // Apelido de SKU     (= P3 col U)
-  K: 14,                 // Imagem             (= P3 col V)
-  L: 13,                 // Peso (g)           (= P3 col W)
-  M: 19,                 // Comprimento (cm)   (= P3 col X)
-  N: 16.3805309734513,  // Largura (cm)       (= P3 col Y)
-  O: 16,                 // Altura (cm)        (= P3 col Z)
-  P: 13,                 // NCM                (= P3 col AA)
-  Q: 13,                 // CEST               (= P3 col AB)
-  R: 19,                 // Unidade            (= P3 col AC)
-  S: 24,                 // Origem             (= P3 col AD)
-  T: 26                  // Link do Fornecedor (= P3 col AE)
+// ── Larguras das colunas — idênticas nas colunas equivalentes de P2 e P3 ────
+// P2 usa as mesmas larguras que a P3 usa para as mesmas colunas funcionais.
+const P2_COL_WIDTHS = [
+  32.7522123893805,  // A: SKU*
+  41,                // B: Título*            (= P3 col C)
+  20.6637168141593,  // C: Apelido            (= P3 col D)
+  22.1150442477876,  // D: NFe                (= P3 col E)
+  18,                // E: Preço de varejo    (= P3 col P)
+  18,                // F: Custo de Compra    (= P3 col Q)
+  35.5044247787611,  // G: Quantidade         (= P3 col R)
+  35.5044247787611,  // H: N° do Estante      (= P3 col S)
+  26,                // I: Código de Barras   (= P3 col T)
+  42.1150442477876,  // J: Apelido de SKU     (= P3 col U)
+  14,                // K: Imagem             (= P3 col V)
+  13,                // L: Peso (g)           (= P3 col W)
+  19,                // M: Comprimento (cm)   (= P3 col X)
+  16.3805309734513,  // N: Largura (cm)       (= P3 col Y)
+  16,                // O: Altura (cm)        (= P3 col Z)
+  13,                // P: NCM                (= P3 col AA)
+  13,                // Q: CEST               (= P3 col AB)
+  19,                // R: Unidade            (= P3 col AC)
+  24,                // S: Origem             (= P3 col AD)
+  26                 // T: Link do Fornecedor (= P3 col AE)
+]
+
+const P3_COL_WIDTHS = [
+  32.7522123893805,  // A: SPU*
+  32.7522123893805,  // B: SKU*
+  41,                // C: Título*
+  20.6637168141593,  // D: Apelido
+  22.1150442477876,  // E: NFe
+  24,                // F: Variantes1*
+  24,                // G: Valor da Variante1*
+  24,                // H: Variantes2
+  24,                // I: Valor da Variante2
+  24,                // J: Variantes3
+  24,                // K: Valor da Variante3
+  22,                // L: Variantes4
+  25,                // M: Valor da Variante4
+  23,                // N: Variantes5
+  29,                // O: Valor da Variante5
+  18,                // P: Preço de varejo
+  18,                // Q: Custo de Compra
+  35.5044247787611,  // R: Quantidade
+  35.5044247787611,  // S: N° do Estante
+  26,                // T: Código de Barras
+  42.1150442477876,  // U: Apelido de SKU
+  14,                // V: Imagem
+  13,                // W: Peso (g)
+  19,                // X: Comprimento (cm)
+  16.3805309734513,  // Y: Largura (cm)
+  16,                // Z: Altura (cm)
+  13,                // AA: NCM
+  13,                // AB: CEST
+  19,                // AC: Unidade
+  24,                // AD: Origem
+  26                 // AE: Link do Fornecedor
+]
+
+// ── Cria a planilha do UpSeller do zero com exceljs ─────────────────────────
+function buildWorksheet(
+  wb: ExcelJS.Workbook,
+  sheetName: string,
+  headers: string[],
+  colWidths: number[],
+  dataRows: (string | number)[][]
+): void {
+  const ws = wb.addWorksheet(sheetName)
+
+  // Aplicar larguras das colunas
+  colWidths.forEach((width, i) => {
+    ws.getColumn(i + 1).width = width
+  })
+
+  // Linha 1 — cabeçalho com estilo idêntico ao modelo UpSeller
+  const headerRow = ws.addRow(headers)
+  headerRow.height = 58.5
+  headerRow.eachCell({ includeEmpty: false }, (cell) => {
+    cell.fill = HEADER_FILL
+    cell.font = HEADER_FONT
+    cell.alignment = HEADER_ALIGNMENT
+  })
+
+  // Linhas de dados — produtos reais do cliente
+  dataRows.forEach((values) => {
+    const row = ws.addRow(values)
+    row.height = 55.5
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      cell.font = DATA_FONT
+    })
+  })
 }
 
 export async function POST(req: Request) {
@@ -65,71 +187,10 @@ export async function POST(req: Request) {
 
     const isUnique = type === 'unique'
     const sheetName = isUnique ? 'Import_Single_Template_BR01' : 'Import_Variants_Template_BR01'
-    const templateFileName = isUnique
-      ? 'Planilha 2 - Modelo UpSeller Produtos Únicos.xlsx'
-      : 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx'
 
-    // ── Localizar arquivo modelo ──────────────────────────────────────────────
-    let templatePath = path.join(process.cwd(), templateFileName)
-    if (!fs.existsSync(templatePath)) {
-      templatePath = path.join(
-        process.cwd(), 'public', 'templates',
-        isUnique ? 'modelo_produtos_unicos.xlsx' : 'modelo_produtos_variantes.xlsx'
-      )
-    }
-    if (!fs.existsSync(templatePath)) {
-      return NextResponse.json(
-        { error: 'Arquivo modelo oficial do UpSeller não encontrado no servidor.' },
-        { status: 500 }
-      )
-    }
-
-    // ── Ler template com exceljs (preserva estilos reais) ────────────────────
-    const wb = new ExcelJS.Workbook()
-    await wb.xlsx.readFile(templatePath)
-
-    const ws = wb.getWorksheet(sheetName)
-    if (!ws) {
-      return NextResponse.json(
-        { error: `Aba ${sheetName} não encontrada no modelo original.` },
-        { status: 500 }
-      )
-    }
-
-    // ── Remover linhas de dados de exemplo (linha 2 em diante) ───────────────
-    const dataRowCount = ws.rowCount - 1
-    if (dataRowCount > 0) {
-      ws.spliceRows(2, dataRowCount)
-    }
-
-    // ── Reforçar estilo do cabeçalho (linha 1) ────────────────────────────────
-    // Garante visual idêntico entre P2 e P3 independente do modelo de origem.
-    const headerRow = ws.getRow(1)
-    headerRow.height = HEADER_ROW_HEIGHT
-    headerRow.eachCell({ includeEmpty: false }, (cell) => {
-      cell.fill = HEADER_FILL
-      cell.font = HEADER_FONT
-      cell.alignment = HEADER_ALIGNMENT
-    })
-
-    // ── Ajustar larguras das colunas da P2 para coincidir com a P3 ───────────
-    if (isUnique) {
-      Object.entries(P2_COL_WIDTHS).forEach(([letter, width]) => {
-        ws.getColumn(letter).width = width
-      })
-    }
-
-    // ── Preencher dados dos produtos ──────────────────────────────────────────
-    const addDataRow = (values: (string | number)[]) => {
-      const row = ws.addRow(values)
-      row.height = DATA_ROW_HEIGHT
-      row.eachCell({ includeEmpty: false }, (cell) => { cell.font = DATA_FONT })
-      return row
-    }
-
-    if (isUnique) {
-      products.forEach((p) => {
-        addDataRow([
+    // ── Montar linhas de dados reais ─────────────────────────────────────────
+    const dataRows: (string | number)[][] = isUnique
+      ? products.map((p) => [
           p.sku || '',          // A: SKU*
           p.title || '',        // B: Título*
           '',                   // C: Apelido do Produto
@@ -151,10 +212,7 @@ export async function POST(req: Request) {
           '0',                  // S: Origem
           ''                    // T: Link do Fornecedor
         ])
-      })
-    } else {
-      products.forEach((p) => {
-        addDataRow([
+      : products.map((p) => [
           p.spu || '',          // A: SPU*
           p.sku || '',          // B: SKU*
           p.title || '',        // C: Título*
@@ -187,15 +245,26 @@ export async function POST(req: Request) {
           '0',                  // AD: Origem
           ''                    // AE: Link do Fornecedor
         ])
-      })
-    }
 
-    // ── Aba de Erros ──────────────────────────────────────────────────────────
-    const existingErrors = wb.getWorksheet('Erros')
-    if (existingErrors) wb.removeWorksheet(existingErrors.id)
+    // ── Construir workbook do zero (sem depender de template em disco) ────────
+    const wb = new ExcelJS.Workbook()
 
+    // Aba principal com dados do cliente
+    buildWorksheet(
+      wb,
+      sheetName,
+      isUnique ? P2_HEADERS : P3_HEADERS,
+      isUnique ? P2_COL_WIDTHS : P3_COL_WIDTHS,
+      dataRows
+    )
+
+    // Aba 'Origin' — exigida pelo validador do UpSeller
+    const wsOrigin = wb.addWorksheet('Origin')
+    wsOrigin.addRow(['UpSeller Import Template'])
+
+    // Aba 'Erros' — auditoria das ocorrências
     const wsErrors = wb.addWorksheet('Erros')
-    wsErrors.addRow([
+    const errorHeaderRow = wsErrors.addRow([
       'Tipo da ocorrência',
       'Linha da planilha do cliente',
       'Nome do produto',
@@ -206,6 +275,8 @@ export async function POST(req: Request) {
       'Arquivo gerado',
       'Intervalo de linhas no arquivo do UpSeller'
     ])
+    errorHeaderRow.font = { bold: true }
+
     if (errors && errors.length > 0) {
       errors.forEach((e) => {
         wsErrors.addRow([
@@ -222,9 +293,11 @@ export async function POST(req: Request) {
       })
     }
 
-    // ── Gerar buffer e retornar ───────────────────────────────────────────────
+    // ── Gerar buffer e retornar ao cliente ────────────────────────────────────
     const outputBuffer = await wb.xlsx.writeBuffer()
-    const outFileName = templateFileName
+    const outFileName = isUnique
+      ? 'Planilha 2 - Modelo UpSeller Produtos Únicos.xlsx'
+      : 'Planilha 3 - Modelo UpSeller Produtos Variantes.xlsx'
 
     return new Response(outputBuffer as ArrayBuffer, {
       status: 200,
