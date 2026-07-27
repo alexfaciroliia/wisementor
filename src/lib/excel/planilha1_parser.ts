@@ -331,32 +331,39 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
       const cleanColor = colorRaw ? normalizeColorName(colorRaw, r + 1, prodTitleRaw, errorLogs) : ''
 
       // Validação do link de imagem
+      let validImgLink = imgLinkRaw
       if (imgLinkRaw) {
+        let hasImgErr = false
         if (!imgLinkRaw.startsWith('http://') && !imgLinkRaw.startsWith('https://')) {
+          hasImgErr = true
           errorLogs.push({
             type: 'ERRO',
             clientRow: r + 1,
             productName: prodTitleRaw,
             field: 'Link Imagem',
             originalValue: imgLinkRaw,
-            correctedValue: imgLinkRaw,
+            correctedValue: '',
             message: 'O link da imagem deve iniciar com http:// ou https://.',
             generatedFile: 'Produtos Variantes',
             upSellerLineRange: '-'
           })
         }
         if (!/\.(jpg|jpeg|png)($|\?)/i.test(imgLinkRaw)) {
+          hasImgErr = true
           errorLogs.push({
             type: 'ERRO',
             clientRow: r + 1,
             productName: prodTitleRaw,
             field: 'Link Imagem',
             originalValue: imgLinkRaw,
-            correctedValue: imgLinkRaw,
+            correctedValue: '',
             message: 'Apenas links de imagem nos formatos JPG/JPEG/PNG são suportados pelo UpSeller.',
             generatedFile: 'Produtos Variantes',
             upSellerLineRange: '-'
           })
+        }
+        if (hasImgErr) {
+          validImgLink = '' // Deixa a célula em branco na planilha gerada em caso de erro
         }
       } else {
         errorLogs.push({
@@ -390,7 +397,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
           color: cleanColor,
           size: cleanSize,
           costPrice: priceRaw,
-          imageUrl: imgLinkRaw,
+          imageUrl: validImgLink,
           supplier: cleanSupplier,
           referenceModel: cleanModel,
           clientRow: r + 1,
@@ -421,6 +428,40 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
       variants.forEach(v => uniqueProducts.push(v))
     } else {
       variants.forEach(v => variantProducts.push(v))
+    }
+  })
+
+  // Mapear cada variante para sua linha exata na planilha gerada e atualizar upSellerLineRange nos errorLogs
+  const clientRowToGeneratedLine = new Map<number, { uniqueLines: number[]; variantLines: number[] }>()
+
+  uniqueProducts.forEach((p, idx) => {
+    const lineNum = idx + 2
+    const entry = clientRowToGeneratedLine.get(p.clientRow) || { uniqueLines: [], variantLines: [] }
+    entry.uniqueLines.push(lineNum)
+    clientRowToGeneratedLine.set(p.clientRow, entry)
+  })
+
+  variantProducts.forEach((p, idx) => {
+    const lineNum = idx + 2
+    const entry = clientRowToGeneratedLine.get(p.clientRow) || { uniqueLines: [], variantLines: [] }
+    entry.variantLines.push(lineNum)
+    clientRowToGeneratedLine.set(p.clientRow, entry)
+  })
+
+  errorLogs.forEach(err => {
+    const genInfo = clientRowToGeneratedLine.get(err.clientRow)
+    if (genInfo) {
+      const isUniqueFile = err.generatedFile === 'Produtos Unicos'
+      const lines = isUniqueFile ? genInfo.uniqueLines : genInfo.variantLines
+      const targetLines = lines.length > 0 ? lines : [...genInfo.uniqueLines, ...genInfo.variantLines]
+      
+      if (targetLines.length === 1) {
+        err.upSellerLineRange = `Linha ${targetLines[0]}`
+      } else if (targetLines.length > 1) {
+        const min = Math.min(...targetLines)
+        const max = Math.max(...targetLines)
+        err.upSellerLineRange = min === max ? `Linha ${min}` : `Linhas ${min}-${max}`
+      }
     }
   })
 

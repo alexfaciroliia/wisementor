@@ -149,13 +149,13 @@ export function generateWarehouseExcel(
   const errorHeaders = [
     'Tipo da ocorrência',
     'Linha da planilha do cliente',
+    'Linha na planilha gerada',
     'Nome do produto',
     'Campo afetado',
     'Valor original',
     'Valor corrigido',
     'Mensagem',
-    'Arquivo gerado',
-    'Intervalo de linhas no arquivo do UpSeller'
+    'Arquivo gerado'
   ]
 
   const errorRowsData: any[][] = [errorHeaders]
@@ -163,13 +163,13 @@ export function generateWarehouseExcel(
     errorRowsData.push([
       e.type,
       e.clientRow,
+      e.upSellerLineRange || '-',
       e.productName,
       e.field,
       e.originalValue,
       e.correctedValue,
       e.message,
-      e.generatedFile,
-      e.upSellerLineRange
+      e.generatedFile
     ])
   })
 

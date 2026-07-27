@@ -447,7 +447,8 @@ function ErrorTable({ errors }: { errors: ErrorLogItem[] }) {
         <thead>
           <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
             <th style={{ padding: '0.75rem 1rem' }}>Tipo</th>
-            <th style={{ padding: '0.75rem 1rem' }}>Linha</th>
+            <th style={{ padding: '0.75rem 1rem' }}>Linha Cliente</th>
+            <th style={{ padding: '0.75rem 1rem' }}>Linha Gerada</th>
             <th style={{ padding: '0.75rem 1rem' }}>Produto</th>
             <th style={{ padding: '0.75rem 1rem' }}>Campo</th>
             <th style={{ padding: '0.75rem 1rem' }}>Original</th>
@@ -471,6 +472,7 @@ function ErrorTable({ errors }: { errors: ErrorLogItem[] }) {
                 </span>
               </td>
               <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>{e.clientRow}</td>
+              <td style={{ padding: '0.65rem 1rem', color: '#38bdf8', fontWeight: 600 }}>{e.upSellerLineRange || '-'}</td>
               <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{e.productName}</td>
               <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
               <td style={{ padding: '0.65rem 1rem', color: '#f87171' }}>{e.originalValue || '-'}</td>
