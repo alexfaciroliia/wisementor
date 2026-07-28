@@ -159,7 +159,14 @@ export function generateWarehouseExcel(
   ]
 
   const errorRowsData: any[][] = [errorHeaders]
-  errors.forEach(e => {
+  const filteredErrors = errors.filter(e => {
+    if (isUnique) {
+      return (e.generatedFile as string) === 'Produtos Unicos' || (e.generatedFile as string) === 'Produtos Únicos'
+    }
+    return e.generatedFile === 'Produtos Variantes'
+  })
+
+  filteredErrors.forEach(e => {
     errorRowsData.push([
       e.type,
       e.clientRow,

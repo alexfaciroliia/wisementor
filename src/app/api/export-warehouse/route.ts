@@ -318,7 +318,14 @@ export async function POST(req: Request) {
     errorHeaderRow.font = { bold: true }
 
     if (errors && errors.length > 0) {
-      errors.forEach((e) => {
+      const filteredErrors = errors.filter((e) => {
+        if (isUnique) {
+          return (e.generatedFile as string) === 'Produtos Unicos' || (e.generatedFile as string) === 'Produtos Únicos'
+        }
+        return e.generatedFile === 'Produtos Variantes'
+      })
+
+      filteredErrors.forEach((e) => {
         wsErrors.addRow([
           e.type,
           e.clientRow,
