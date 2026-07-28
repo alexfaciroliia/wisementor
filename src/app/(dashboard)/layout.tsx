@@ -613,9 +613,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <Link
               href="/produtos"
-              className={`menu-item ${pathname.startsWith('/produtos') ? 'active' : ''}`}
+              className={`menu-item ${pathname === '/produtos' ? 'active' : ''}`}
             >
-              📦 Produtos (Armazém)
+              📦 Ingestão (Planilha 1)
+            </Link>
+
+            <Link
+              href="/armazem"
+              className={`menu-item ${pathname === '/armazem' ? 'active' : ''}`}
+            >
+              🗄️ Armazém do Supabase
             </Link>
 
             <Link
