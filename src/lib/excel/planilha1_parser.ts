@@ -431,7 +431,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
     }
   })
 
-  // Mapear cada variante para sua linha exata na planilha gerada e atualizar upSellerLineRange nos errorLogs
+  // Mapear cada variante para sua linha exata na planilha gerada e atualizar upSellerLineRange e generatedFile nos errorLogs
   const clientRowToGeneratedLine = new Map<number, { uniqueLines: number[]; variantLines: number[] }>()
 
   uniqueProducts.forEach((p, idx) => {
@@ -448,7 +448,18 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
     clientRowToGeneratedLine.set(p.clientRow, entry)
   })
 
+  const uniqueClientRows = new Set(uniqueProducts.map(p => p.clientRow))
+  const variantClientRows = new Set(variantProducts.map(p => p.clientRow))
+
   errorLogs.forEach(err => {
+    // 1. Atualizar generatedFile de acordo com a classificação real do produto final
+    if (uniqueClientRows.has(err.clientRow) && !variantClientRows.has(err.clientRow)) {
+      err.generatedFile = 'Produtos Unicos'
+    } else if (variantClientRows.has(err.clientRow)) {
+      err.generatedFile = 'Produtos Variantes'
+    }
+
+    // 2. Atualizar intervalo de linhas da planilha gerada (upSellerLineRange)
     const genInfo = clientRowToGeneratedLine.get(err.clientRow)
     if (genInfo) {
       const isUniqueFile = err.generatedFile === 'Produtos Unicos'
