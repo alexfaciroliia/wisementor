@@ -185,10 +185,26 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
   return { success: true, savedCount: currentPayload.length }
 }
 
+export interface SupabaseProductItem {
+  id: string
+  client_id: string
+  spu: string
+  sku: string
+  product_name: string
+  supplier?: string
+  reference_model?: string
+  color?: string
+  size?: string
+  image_url?: string
+  cost_price: number
+  is_kit_native?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export async function fetchWarehouseProducts(clientId: string, spuFilter?: string): Promise<WarehouseProductItem[]> {
   const supabase = createClient()
   
-  // Tentar buscar com seleção ampla para compatibilidade com qualquer versão da tabela produtos
   try {
     let query = supabase.from('products').select('*').eq('client_id', clientId)
 
@@ -214,6 +230,105 @@ export async function fetchWarehouseProducts(clientId: string, spuFilter?: strin
     console.error('Erro ao buscar produtos:', err)
     return []
   }
+}
+
+export async function getSupabaseProducts(clientId: string): Promise<SupabaseProductItem[]> {
+  if (!clientId) return []
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    console.error('Erro ao listar produtos do Supabase:', error)
+    return []
+  }
+
+  return data.map((item: any) => ({
+    id: item.id,
+    client_id: item.client_id,
+    spu: item.spu || '',
+    sku: item.sku || item.sku_upseller || '',
+    product_name: item.product_name || item.description || item.title || '',
+    supplier: item.supplier || '',
+    reference_model: item.reference_model || '',
+    color: Array.isArray(item.color) ? item.color.join(', ') : (item.color || ''),
+    size: Array.isArray(item.size) ? item.size.join(', ') : (item.size || ''),
+    image_url: item.image_url || '',
+    cost_price: Number(item.cost_price) || 0,
+    is_kit_native: !!item.is_kit_native,
+    created_at: item.created_at,
+    updated_at: item.updated_at
+  }))
+}
+
+export async function createSupabaseProduct(item: Omit<SupabaseProductItem, 'id'>): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient()
+  const payload = {
+    client_id: item.client_id,
+    spu: item.spu,
+    sku: item.sku,
+    product_name: item.product_name,
+    supplier: item.supplier || '',
+    reference_model: item.reference_model || '',
+    color: item.color || '',
+    size: item.size || '',
+    image_url: item.image_url || '',
+    cost_price: item.cost_price || 0,
+    is_kit_native: !!item.is_kit_native,
+    updated_at: new Date().toISOString()
+  }
+
+  const { error } = await supabase.from('products').insert(payload)
+  if (error) {
+    return { success: false, error: error.message }
+  }
+  return { success: true }
+}
+
+export async function updateSupabaseProduct(id: string, item: Partial<SupabaseProductItem>): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient()
+  const payload: any = {
+    updated_at: new Date().toISOString()
+  }
+
+  if (item.spu !== undefined) payload.spu = item.spu
+  if (item.sku !== undefined) payload.sku = item.sku
+  if (item.product_name !== undefined) payload.product_name = item.product_name
+  if (item.supplier !== undefined) payload.supplier = item.supplier
+  if (item.reference_model !== undefined) payload.reference_model = item.reference_model
+  if (item.color !== undefined) payload.color = item.color
+  if (item.size !== undefined) payload.size = item.size
+  if (item.image_url !== undefined) payload.image_url = item.image_url
+  if (item.cost_price !== undefined) payload.cost_price = item.cost_price
+  if (item.is_kit_native !== undefined) payload.is_kit_native = item.is_kit_native
+
+  const { error } = await supabase.from('products').update(payload).eq('id', id)
+  if (error) {
+    return { success: false, error: error.message }
+  }
+  return { success: true }
+}
+
+export async function deleteSupabaseProduct(id: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('products').delete().eq('id', id)
+  if (error) {
+    return { success: false, error: error.message }
+  }
+  return { success: true }
+}
+
+export async function deleteAllWarehouseProducts(clientId: string): Promise<{ success: boolean; error?: string }> {
+  if (!clientId) return { success: false, error: 'Cliente não selecionado' }
+  const supabase = createClient()
+  const { error } = await supabase.from('products').delete().eq('client_id', clientId)
+  if (error) {
+    return { success: false, error: error.message }
+  }
+  return { success: true }
 }
 
 export async function saveErrorLogs(clientId: string, batchId: string, stage: 'planilha_1_produtos' | 'planilha_marketplace', errorLogs: ErrorLogItem[]) {
