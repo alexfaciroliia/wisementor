@@ -120,21 +120,29 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
   }))
 
   let attempts = 0
-  while (attempts < 8) {
+  while (attempts < 10) {
     attempts++
-    const { error } = await supabase
-      .from('products')
-      .upsert(currentPayload, { onConflict: 'client_id,sku' })
+
+    // Tentar upsert com onConflict em client_id,sku se sku estiver no payload
+    const hasSku = currentPayload.length > 0 && 'sku' in currentPayload[0]
+    const { error } = hasSku
+      ? await supabase.from('products').upsert(currentPayload, { onConflict: 'client_id,sku' })
+      : await supabase.from('products').upsert(currentPayload)
 
     if (!error) {
       return { success: true, savedCount: currentPayload.length }
     }
 
-    // Identificar a coluna ausente no esquema do Supabase e remover dinamicamente
-    const missingColMatch = error.message.match(/Could not find the '([^']+)' column/)
+    // 1. Identificar coluna ausente (tanto no padrão PostgREST quanto no padrão Postgres nativo)
+    const missingColMatch =
+      error.message.match(/Could not find the '([^']+)' column/) ||
+      error.message.match(/column "([^"]+)" does not exist/i) ||
+      error.message.match(/column ([^\s]+) of relation/i)
+
     if (missingColMatch && missingColMatch[1]) {
-      const colToRemove = missingColMatch[1]
-      console.warn(`Coluna '${colToRemove}' ausente no Supabase. Removendo dinamicamente para garantir o salvamento...`)
+      const colToRemove = missingColMatch[1].replace(/"/g, '')
+      console.warn(`Coluna '${colToRemove}' ausente no banco de dados Supabase. Removendo do payload para tentar novo salvamento...`)
+      
       currentPayload = currentPayload.map(row => {
         const copy = { ...row }
         delete copy[colToRemove]
@@ -143,7 +151,16 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
       continue
     }
 
-    // Tentar upsert sem onConflict estrito caso o índice de unicidade do banco seja simples
+    // 2. Se o erro for de tabela inexistente
+    if (error.message.includes('relation "public.products" does not exist') || error.message.includes('relation "products" does not exist')) {
+      return {
+        success: false,
+        savedCount: 0,
+        error: 'A tabela "products" não existe no Supabase. Execute o script "supabase_automation_schema.sql" no SQL Editor do Supabase.'
+      }
+    }
+
+    // 3. Tentar upsert simples se houver falha na restrição onConflict
     if (error.message.includes('onConflict') || error.message.includes('constraint')) {
       const { error: simpleUpsertErr } = await supabase.from('products').upsert(currentPayload)
       if (!simpleUpsertErr) {
@@ -152,6 +169,16 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
     }
 
     console.error('Erro ao salvar produtos no Supabase:', error)
+    
+    // Se a mensagem mencionar coluna sku inexistente e já tentamos tratar, fornecer instrução clara
+    if (error.message.includes('column "sku" does not exist') || error.message.includes("'sku'")) {
+      return {
+        success: false,
+        savedCount: 0,
+        error: 'A tabela "products" no Supabase precisa ser criada/atualizada. Por favor, execute o arquivo "supabase_automation_schema.sql" no SQL Editor do Supabase.'
+      }
+    }
+
     return { success: false, savedCount: 0, error: error.message }
   }
 
