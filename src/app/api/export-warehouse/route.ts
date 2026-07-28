@@ -175,37 +175,40 @@ function buildWorksheet(
       cell.font = DATA_FONT
       cell.alignment = { vertical: 'top' }
 
-      if (isUnique) {
-        // Formatações exatas da Planilha 2 (Produtos Únicos)
-        if (colNumber === 5 || colNumber === 6 || colNumber === 13 || colNumber === 14 || colNumber === 15) {
-          // Preço de varejo (E), Custo de compra (F), Comprimento (M), Largura (N), Altura (O)
-          cell.numFmt = '0.00_ '
-        } else if (colNumber === 7 || colNumber === 12) {
-          // Quantidade (G), Peso (L)
-          cell.numFmt = '0_ '
-          if (colNumber === 7) cell.alignment = { horizontal: 'right', vertical: 'top' }
-        } else if (colNumber === 8 || colNumber === 9 || colNumber === 11 || colNumber === 20) {
-          // Estante (H), Código de Barras (I), Imagem (K), Link Fornecedor (T)
-          cell.numFmt = '@'
-          if (colNumber === 8) cell.alignment = { horizontal: 'left', vertical: 'top' }
-          if (colNumber === 9) cell.alignment = { horizontal: 'center', vertical: 'top' }
-          if (colNumber === 11 || colNumber === 20) cell.alignment = { vertical: 'top', wrapText: true }
-        }
-      } else {
-        // Formatações exatas da Planilha 3 (Produtos Variantes)
-        if (colNumber === 16 || colNumber === 17 || colNumber === 24 || colNumber === 25 || colNumber === 26) {
-          // Preço de varejo (P), Custo de compra (Q), Comprimento (X), Largura (Y), Altura (Z)
-          cell.numFmt = '0.00_ '
-        } else if (colNumber === 18 || colNumber === 23) {
-          // Quantidade (R), Peso (W)
-          cell.numFmt = '0_ '
-          if (colNumber === 18) cell.alignment = { horizontal: 'right', vertical: 'top' }
-        } else if (colNumber === 19 || colNumber === 20 || colNumber === 22 || colNumber === 31) {
-          // Estante (S), Código de Barras (T), Imagem (V), Link Fornecedor (AE)
-          cell.numFmt = '@'
-          if (colNumber === 19) cell.alignment = { horizontal: 'left', vertical: 'top' }
-          if (colNumber === 20) cell.alignment = { horizontal: 'center', vertical: 'top' }
-          if (colNumber === 22 || colNumber === 31) cell.alignment = { vertical: 'top', wrapText: true }
+      // Só aplica numFmt se a célula tiver um valor preenchido (não vazio)
+      if (cell.value !== '' && cell.value !== null && cell.value !== undefined) {
+        if (isUnique) {
+          // Formatações exatas da Planilha 2 (Produtos Únicos)
+          if (colNumber === 5 || colNumber === 6 || colNumber === 13 || colNumber === 14 || colNumber === 15) {
+            // Preço de varejo (E), Custo de compra (F), Comprimento (M), Largura (N), Altura (O)
+            cell.numFmt = '0.00_ '
+          } else if (colNumber === 7 || colNumber === 12) {
+            // Quantidade (G), Peso (L)
+            cell.numFmt = '0_ '
+            if (colNumber === 7) cell.alignment = { horizontal: 'right', vertical: 'top' }
+          } else if (colNumber === 8 || colNumber === 9 || colNumber === 11 || colNumber === 20) {
+            // Estante (H), Código de Barras (I), Imagem (K), Link Fornecedor (T)
+            cell.numFmt = '@'
+            if (colNumber === 8) cell.alignment = { horizontal: 'left', vertical: 'top' }
+            if (colNumber === 9) cell.alignment = { horizontal: 'center', vertical: 'top' }
+            if (colNumber === 11 || colNumber === 20) cell.alignment = { vertical: 'top', wrapText: true }
+          }
+        } else {
+          // Formatações exatas da Planilha 3 (Produtos Variantes)
+          if (colNumber === 16 || colNumber === 17 || colNumber === 24 || colNumber === 25 || colNumber === 26) {
+            // Preço de varejo (P), Custo de compra (Q), Comprimento (X), Largura (Y), Altura (Z)
+            cell.numFmt = '0.00_ '
+          } else if (colNumber === 18 || colNumber === 23) {
+            // Quantidade (R), Peso (W)
+            cell.numFmt = '0_ '
+            if (colNumber === 18) cell.alignment = { horizontal: 'right', vertical: 'top' }
+          } else if (colNumber === 19 || colNumber === 20 || colNumber === 22 || colNumber === 31) {
+            // Estante (S), Código de Barras (T), Imagem (V), Link Fornecedor (AE)
+            cell.numFmt = '@'
+            if (colNumber === 19) cell.alignment = { horizontal: 'left', vertical: 'top' }
+            if (colNumber === 20) cell.alignment = { horizontal: 'center', vertical: 'top' }
+            if (colNumber === 22 || colNumber === 31) cell.alignment = { vertical: 'top', wrapText: true }
+          }
         }
       }
     })
@@ -231,7 +234,7 @@ export async function POST(req: Request) {
           p.title || '',                    // B: Título*
           '',                               // C: Apelido do Produto
           'N',                              // D: Usar apelido como título da NFe
-          0,                                // E: Preço de varejo (numérico 0)
+          '',                               // E: Preço de varejo (quando 0, fica em branco '')
           Number(p.costPrice) || 0,         // F: Custo de Compra (numérico)
           '',                               // G: Quantidade
           '',                               // H: N° do Estante
@@ -264,7 +267,7 @@ export async function POST(req: Request) {
           '',                               // M: Valor da Variante4
           '',                               // N: Variantes5
           '',                               // O: Valor da Variante5
-          0,                                // P: Preço de varejo (numérico 0)
+          '',                               // P: Preço de varejo (quando 0, fica em branco '')
           Number(p.costPrice) || 0,         // Q: Custo de Compra (numérico)
           '',                               // R: Quantidade
           '',                               // S: N° do Estante
