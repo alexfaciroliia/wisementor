@@ -4,7 +4,7 @@ import { useState } from 'react'
 import * as XLSX from 'xlsx'
 import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem } from '@/lib/excel/planilha_marketplace_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
-import { fetchWarehouseProducts, getClientParameters } from '@/lib/services/product_service'
+import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules } from '@/lib/services/product_service'
 import { useDashboard } from '@/app/(dashboard)/layout'
 
 export default function PadronizacaoPage() {
@@ -45,8 +45,9 @@ export default function PadronizacaoPage() {
       // 1. Buscar parâmetros do cliente (palavras de kit e conjuntos)
       const params = await getClientParameters(selectedClientId)
 
-      // 2. Buscar produtos oficiais cadastrados no Supabase para o cliente (e SPU se fornecido)
+      // 2. Buscar produtos oficiais cadastrados no Supabase para o cliente e suas regras de categorias
       const warehouseProducts = await fetchWarehouseProducts(selectedClientId, targetSpu)
+      const categoryRules = await getClientCategoryRules(selectedClientId, warehouseProducts)
 
       if (warehouseProducts.length === 0) {
         setMessage({
@@ -169,7 +170,8 @@ export default function PadronizacaoPage() {
         params.kit_keywords,
         params.ignore_keywords,
         visionFn,
-        (current, total, listingId) => setVisionProgress({ current, total, listingId })
+        (current, total, listingId) => setVisionProgress({ current, total, listingId }),
+        categoryRules
       )
 
       setVisionLogs(res.visionLogs || [])

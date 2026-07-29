@@ -96,11 +96,11 @@ ${productListText}
 ${titleContext}
 
 INSTRUCOES CRUCIAIS:
-1. Examine TODA a imagem em busca de CADA um dos itens presentes (exemplo: sapato/tenis principal, cinto na parte superior, relogio digital/analogico ao lado, carteira de couro no canto inferior, fones de ouvido, etc).
-2. ATENCAO CRUCIAL PARA RELOGIOS: Diferencie Relogio Digital (display LED quadrado com numeros digitais, pulseira de silicone, SPU V20) de Relogio Analogico (mostrador redondo tradicional com ponteiros e numeros). Se a imagem contiver um Relogio Analogico e a lista do armazem NAO tiver um SPU especifico para relogio analogico, NAO retorne V20!
+1. Examine TODA a imagem em busca de CADA um dos itens presentes (exemplo: sapatos, tenis, cintos, carteiras, relogios digitais, relogios analogicos, fones de ouvido, etc).
+2. ATENCAO PARA RELOGIOS: Diferencie Relogio Digital (display LED quadrado com numeros digitais) de Relogio Analogico (mostrador redondo tradicional com ponteiros fisicos). Se a foto contiver um Relogio Analogico e a lista do armazem NAO tiver um SPU especifico para relogio analogico, NAO vincule a um SPU de relogio digital!
 3. Para CADA item visivel na imagem, encontre o SPU correspondente na lista de produtos do armazem acima.
-4. NAO omita nenhum acessorio! Se houver um relogio digital, identifique o SPU do relogio digital (V20). Se houver cinto, identifique o SPU do cinto. Se houver carteira, identifique o SPU da carteira. Se houver sapato/tenis, identifique o SPU do sapato/tenis.
-5. Responda SOMENTE com os SPUs identificados, separados por virgula. Exemplo: CART, V10, V20, FN-6012
+4. NAO omita nenhum acessorio ou item visivel! Identifique o SPU exato da lista de produtos acima para cada componente do kit.
+5. Responda SOMENTE com os SPUs identificados da lista do armazem, separados por virgula. Exemplo de formato: SPU1, SPU2, SPU3
 
 RESPOSTA:`
 

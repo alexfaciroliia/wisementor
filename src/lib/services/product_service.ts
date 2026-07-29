@@ -10,6 +10,109 @@ export interface ClientParameter {
   auto_standardize_simples?: boolean
 }
 
+export interface ClientCategoryRule {
+  id?: string
+  client_id: string
+  category_name: string
+  keywords: string[]
+  exclude_keywords?: string[]
+  spu_patterns?: string[]
+  is_accessory?: boolean
+}
+
+export async function getClientCategoryRules(
+  clientId: string,
+  warehouseProducts: WarehouseProductItem[] = []
+): Promise<ClientCategoryRule[]> {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('client_category_rules')
+      .select('*')
+      .eq('client_id', clientId)
+
+    if (!error && data && data.length > 0) {
+      return data as ClientCategoryRule[]
+    }
+  } catch {}
+
+  // Inferir regras dinamicamente com base nos produtos reais cadastrados no armazém Supabase
+  const inferredRules: ClientCategoryRule[] = []
+  const spuMap = new Map<string, { names: string[]; spu: string; isAccessory: boolean }>()
+
+  for (const product of warehouseProducts) {
+    const spu = (product.spu || '').trim().toUpperCase()
+    if (!spu) continue
+
+    const name = (product.product_name || spu).trim()
+    const nameLower = name.toLowerCase()
+
+    const isFootwearOrApparelSize = product.size && /^\d+$/.test(product.size.trim())
+    const hasAccessoryName = /carteira|cinto|relogio|relógio|fone|bluetooth|meia|óculos|oculos|chapeu|chapéu|boné|bone|gravata|cachecol|mochila|bolsa/i.test(nameLower)
+    const isAccessory = hasAccessoryName || !isFootwearOrApparelSize
+
+    if (!spuMap.has(spu)) {
+      spuMap.set(spu, { names: [name], spu, isAccessory })
+    } else {
+      const existing = spuMap.get(spu)!
+      if (!existing.names.includes(name)) existing.names.push(name)
+    }
+  }
+
+  for (const [spu, info] of spuMap.entries()) {
+    const primaryName = info.names[0] || spu
+    const nameLower = primaryName.toLowerCase()
+
+    const isDigitalWatch = /digital/i.test(nameLower)
+    const isAnalogWatch = /analogico|analógico/i.test(nameLower)
+
+    const keywords = [primaryName.toLowerCase(), spu.toLowerCase()]
+    const exclude_keywords: string[] = []
+
+    if (isDigitalWatch) exclude_keywords.push('analogico', 'analógico')
+    if (isAnalogWatch) exclude_keywords.push('digital')
+
+    inferredRules.push({
+      client_id: clientId,
+      category_name: primaryName,
+      keywords,
+      exclude_keywords,
+      spu_patterns: [spu],
+      is_accessory: info.isAccessory
+    })
+  }
+
+  return inferredRules
+}
+
+export async function saveClientCategoryRules(
+  clientId: string,
+  rules: ClientCategoryRule[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('client_category_rules')
+      .upsert(
+        rules.map(r => ({
+          client_id: clientId,
+          category_name: r.category_name,
+          keywords: r.keywords,
+          exclude_keywords: r.exclude_keywords || [],
+          spu_patterns: r.spu_patterns || [],
+          is_accessory: r.is_accessory ?? true,
+          updated_at: new Date().toISOString()
+        })),
+        { onConflict: 'client_id,category_name' }
+      )
+
+    if (error) return { success: false, error: error.message }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+}
+
 export async function getClientParameters(clientId: string): Promise<ClientParameter> {
   const defaultParams: ClientParameter = {
     client_id: clientId,

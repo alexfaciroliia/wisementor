@@ -107,40 +107,13 @@ function similarityScore(a: string, b: string): number {
   return (recall + precision) / 2
 }
 
-// Tabela de sinônimos e padrões de categorias para busca tolerante de produtos no armazém
-const CATEGORY_ALIASES: Array<{ keywords: RegExp; spuPatterns: RegExp; excludeKeywords?: RegExp }> = [
-  { 
-    keywords: /relogio\s*digital|relógio\s*digital|digital\s*watch/i, 
-    spuPatterns: /v20|rel-dig|digital/i,
-    excludeKeywords: /analogico|analógico/i
-  },
-  { 
-    keywords: /relogio\s*analogico|relógio\s*analógico|relogio\s*analog|relógio\s*analog|analog\s*watch/i, 
-    spuPatterns: /rel-ana|analogico|analógico/i,
-    excludeKeywords: /digital/i
-  },
-  { 
-    keywords: /carteira|wallet/i, 
-    spuPatterns: /v10|cart|wallet|carteira/i 
-  },
-  { 
-    keywords: /cinto|belt/i, 
-    spuPatterns: /cart|c10|cinto|belt/i 
-  },
-  { 
-    keywords: /fone|headphone|bluetooth|airpod/i, 
-    spuPatterns: /fone|bt|bluetooth/i 
-  },
-  { 
-    keywords: /meia|meias|sock/i, 
-    spuPatterns: /meia|sock/i 
-  }
-]
+import { ClientCategoryRule } from '@/lib/services/product_service'
 
-// 4. Encontrar melhor produto no armazém para um componente do kit
+// 4. Encontrar melhor produto no armazém para um componente do kit (100% Parametrizado)
 function findBestProductForComponent(
   componentName: string,
-  warehouseProducts: WarehouseProductItem[]
+  warehouseProducts: WarehouseProductItem[],
+  categoryRules: ClientCategoryRule[] = []
 ): WarehouseProductItem | null {
   if (!componentName || warehouseProducts.length === 0) return null
 
@@ -160,29 +133,41 @@ function findBestProductForComponent(
 
   if (bestScore >= 0.25) return bestProduct
 
-  // Tentar busca por categorias e sinônimos conhecidos
-  for (const alias of CATEGORY_ALIASES) {
-    if (alias.keywords.test(componentName)) {
-      if (alias.excludeKeywords && alias.excludeKeywords.test(componentName)) {
-        continue
-      }
-      const matchByPattern = warehouseProducts.find(p => {
-        const prodName = p.product_name || ''
-        if (alias.excludeKeywords && (alias.excludeKeywords.test(p.spu) || alias.excludeKeywords.test(prodName))) {
-          return false
-        }
-        return alias.spuPatterns.test(p.spu) || alias.keywords.test(prodName)
+  // Tentar busca através das Regras & Sinônimos de Categorias do Cliente
+  const normComponent = componentName.toLowerCase()
+
+  for (const rule of categoryRules) {
+    const matchesKeyword = rule.keywords.some(kw => normComponent.includes(kw.toLowerCase()))
+    if (matchesKeyword) {
+      const isExcluded = rule.exclude_keywords?.some(ex => normComponent.includes(ex.toLowerCase()))
+      if (isExcluded) continue
+
+      const matched = warehouseProducts.find(p => {
+        const pSpu = p.spu.toUpperCase()
+        const pName = (p.product_name || '').toLowerCase()
+
+        const spuMatch = rule.spu_patterns?.some(pat => pSpu.includes(pat.toUpperCase()))
+        const nameMatch = pName.includes(rule.category_name.toLowerCase()) || rule.keywords.some(kw => pName.includes(kw.toLowerCase()))
+
+        const pIsExcluded = rule.exclude_keywords?.some(ex => pSpu.includes(ex.toUpperCase()) || pName.includes(ex.toLowerCase()))
+        if (pIsExcluded) return false
+
+        return spuMatch || nameMatch
       })
-      if (matchByPattern) return matchByPattern
+
+      if (matched) return matched
     }
   }
 
   return null
 }
 
-// 5. Ordenar SPUs do Kit: Acessórios em Ordem Alfabética PRIMEIRO, Produto Principal por ÚLTIMO
-// Exemplo esperado: KIT-CART-V10-V20-FN-6012-PRETO-38
-function orderKitSpus(componentSpus: string[], targetProducts: WarehouseProductItem[]): string {
+// 5. Ordenar SPUs do Kit (100% Parametrizado): Acessórios em Ordem Alfabética PRIMEIRO, Produto Principal por ÚLTIMO
+function orderKitSpus(
+  componentSpus: string[],
+  targetProducts: WarehouseProductItem[],
+  categoryRules: ClientCategoryRule[] = []
+): string {
   const accessories: string[] = []
   const mainProducts: string[] = []
 
@@ -190,34 +175,34 @@ function orderKitSpus(componentSpus: string[], targetProducts: WarehouseProductI
     const normSpu = spu.toUpperCase()
     const prods = targetProducts.filter(p => p.spu.toUpperCase() === normSpu || sanitizeText(p.spu).toUpperCase().replace(/\s+/g, '-') === normSpu)
 
-    // Produto principal tem variação numérica de tamanho ou nome referente a calçado/vestuário principal
-    const isMain = prods.some(p => {
-      const normSize = (p.size || '').trim().toLowerCase()
-      const normName = (p.product_name || p.spu || '').toLowerCase()
-      const hasNumericSize = /\d+/.test(normSize) && normSize !== 'u' && normSize !== 'unico' && normSize !== 'unica'
-      const isFootwear = /sapato|tenis|tênis|sapatilha|bota|tamanco|chinelo|sandalia|sandália|mocassim|slip|coturno/.test(normName)
-      return hasNumericSize || isFootwear
-    })
+    const rule = categoryRules.find(r => r.spu_patterns?.some(pat => normSpu.includes(pat.toUpperCase())))
+    let isAccessory = rule?.is_accessory
 
-    if (isMain) {
-      if (!mainProducts.includes(spu)) mainProducts.push(spu)
-    } else {
+    if (isAccessory === undefined) {
+      const isMain = prods.some(p => {
+        const normSize = (p.size || '').trim().toLowerCase()
+        const normName = (p.product_name || p.spu || '').toLowerCase()
+        const hasNumericSize = /\d+/.test(normSize) && normSize !== 'u' && normSize !== 'unico' && normSize !== 'unica'
+        const isFootwear = /sapato|tenis|tênis|sapatilha|bota|tamanco|chinelo|sandalia|sandália|mocassim|slip|coturno/.test(normName)
+        return hasNumericSize || isFootwear
+      })
+      isAccessory = !isMain
+    }
+
+    if (isAccessory) {
       if (!accessories.includes(spu)) accessories.push(spu)
+    } else {
+      if (!mainProducts.includes(spu)) mainProducts.push(spu)
     }
   }
 
-  // Se nenhum foi classificado como principal (ou todos foram), ordenar tudo alfabeticamente
   if (mainProducts.length === 0 || accessories.length === 0) {
     return componentSpus.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('-')
   }
 
-  // Acessórios ordenados alfabeticamente
   accessories.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
-  
-  // Produtos principais ordenados alfabeticamente
   mainProducts.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
 
-  // Acessórios primeiro, Produto Principal por ÚLTIMO
   return [...accessories, ...mainProducts].join('-')
 }
 
@@ -272,7 +257,8 @@ export function processMarketplaceListings(
   warehouseProducts: WarehouseProductItem[],
   targetSpu: string = '',
   kitKeywords: string[] = ['kit', 'pack', 'combo', 'jogo'],
-  ignoreKeywords: string[] = ['conjunto']
+  ignoreKeywords: string[] = ['conjunto'],
+  categoryRules: ClientCategoryRule[] = []
 ): ParseMarketplaceResult {
   const kitsRows: GeneratedKitRow[] = []
   const allListings: ProcessedListingResult[] = []
@@ -323,7 +309,7 @@ export function processMarketplaceListings(
     const localErrors: ErrorLogItem[] = []
 
     for (const componentName of kitComponents) {
-      const found = findBestProductForComponent(componentName, targetProducts)
+      const found = findBestProductForComponent(componentName, targetProducts, categoryRules)
       if (found) {
         const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
         if (!componentSPUs.includes(cleanSpu)) componentSPUs.push(cleanSpu)
@@ -350,7 +336,7 @@ export function processMarketplaceListings(
       continue
     }
 
-    const spuPart = orderKitSpus(componentSPUs, targetProducts)
+    const spuPart = orderKitSpus(componentSPUs, targetProducts, categoryRules)
     const itemKitRows: GeneratedKitRow[] = []
 
     for (const variationRow of rows) {
@@ -413,7 +399,8 @@ export async function processMarketplaceListingsWithVision(
   kitKeywords: string[] = ['kit', 'pack', 'combo', 'jogo'],
   ignoreKeywords: string[] = ['conjunto'],
   visionFn?: VisionIdentifyFn,
-  onProgress?: (current: number, total: number, listingId: string) => void
+  onProgress?: (current: number, total: number, listingId: string) => void,
+  categoryRules: ClientCategoryRule[] = []
 ): Promise<ParseMarketplaceResult & { visionLogs: VisionProcessingLog[] }> {
 
   const kitsRows: GeneratedKitRow[] = []
@@ -510,7 +497,7 @@ export async function processMarketplaceListingsWithVision(
     const localErrors: ErrorLogItem[] = []
 
     for (const compName of titleComponents) {
-      const found = findBestProductForComponent(compName, targetProducts)
+      const found = findBestProductForComponent(compName, targetProducts, categoryRules)
       if (found) {
         const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
         if (!componentSPUs.includes(cleanSpu)) {
@@ -525,7 +512,7 @@ export async function processMarketplaceListingsWithVision(
           field: 'Componente Não Localizado no Supabase',
           originalValue: compName,
           correctedValue: '-',
-          message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase (ex: SPU V20 para Relógio Digital). Identifique e cadastre o produto no armazém.`,
+          message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
           generatedFile: 'Kits',
           upSellerLineRange: '-'
         }
@@ -567,7 +554,7 @@ export async function processMarketplaceListingsWithVision(
     }
 
     // Regra 2: Ordenar SPUs (Acessórios Alfabéticos PRIMEIRO, Produto Principal por ÚLTIMO)
-    const spuPart = orderKitSpus(componentSPUs, targetProducts)
+    const spuPart = orderKitSpus(componentSPUs, targetProducts, categoryRules)
     const itemKitRows: GeneratedKitRow[] = []
 
     for (const variationRow of rows) {
