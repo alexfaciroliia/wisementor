@@ -16,6 +16,8 @@ export default function PadronizacaoPage() {
   const [file, setFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [resultData, setResultData] = useState<ParseMarketplaceResult | null>(null)
+  const [debugInfo, setDebugInfo] = useState<string | null>(null)
+  const [showDebug, setShowDebug] = useState(false)
   
   const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
@@ -61,18 +63,50 @@ export default function PadronizacaoPage() {
         return
       }
 
+      // Detectar cabeçalhos dinamicamente
       const headers = rawRows[0].map(h => String(h || '').trim().toLowerCase())
 
       const findColIndex = (keywords: string[]) => {
-        return headers.findIndex(h => keywords.some(k => h.includes(k)))
+        const idx = headers.findIndex(h => keywords.some(k => h.includes(k)))
+        return idx
       }
 
-      const colTitle = findColIndex(['título', 'titulo', 'nome do anúncio', 'anuncio', 'title']) !== -1 ? findColIndex(['título', 'titulo', 'nome do anúncio', 'anuncio', 'title']) : 0
-      const colStatus = findColIndex(['status', 'situação', 'situacao', 'estado']) !== -1 ? findColIndex(['status', 'situação', 'situacao', 'estado']) : 1
-      const colId = findColIndex(['id', 'mlb', 'código', 'codigo', 'item id']) !== -1 ? findColIndex(['id', 'mlb', 'código', 'codigo', 'item id']) : 2
-      const colColor = findColIndex(['cor', 'cores', 'variacao cor', 'variante cor'])
-      const colSize = findColIndex(['tamanho', 'variacao tamanho', 'tam'])
-      const colImg = findColIndex(['imagem', 'link', 'foto', 'image'])
+      // Mapeamento expandido de colunas para suportar exportações do UpSeller (Mercado Livre, Shopee, etc)
+      let colTitle = findColIndex(['título', 'titulo', 'nome do anúncio', 'anuncio', 'nome do produto', 'title', 'descripcion'])
+      let colStatus = findColIndex(['status', 'situação', 'situacao', 'estado', 'health'])
+      let colId = findColIndex(['item id', 'id do anúncio', 'codigo do anuncio', 'id anuncio', 'anuncio id', 'sku', 'id', 'mlb', 'código', 'codigo'])
+      let colColor = findColIndex(['variação cor', 'variacao cor', 'variante cor', 'cor ', 'cores', 'cor', 'color', 'colour'])
+      let colSize = findColIndex(['variação tamanho', 'variacao tamanho', 'variante tamanho', 'tamanho', 'tam', 'size', 'talle'])
+      let colImg = findColIndex(['url foto principal', 'url da foto', 'foto principal', 'link foto', 'link imagem', 'imagem', 'foto', 'image', 'link', 'url'])
+
+      // Fallbacks para planilha sem cabeçalho legível
+      if (colTitle === -1) colTitle = 6   // Coluna G é o título na exportação padrão do UpSeller
+      if (colStatus === -1) colStatus = -1
+      if (colId === -1) colId = 0         // Coluna A costuma ser o ID
+      if (colImg === -1) colImg = 41      // Coluna AP é a foto na exportação padrão do UpSeller
+
+      // Gerar relatório de diagnóstico
+      const diagLines = [
+        `📋 Planilha: ${firstSheetName}`,
+        `📏 Total de linhas: ${rawRows.length - 1} (excl. cabeçalho)`,
+        `🔍 Cabeçalhos detectados: ${headers.slice(0, 20).map((h,i) => `[${i}]=${h}`).join(' | ')}`,
+        `🏷️ Coluna ID: [${colId}] = ${headers[colId] || '?'}`,
+        `📝 Coluna Título: [${colTitle}] = ${headers[colTitle] || '?'}`,
+        `🎨 Coluna Cor: [${colColor}] = ${colColor >= 0 ? headers[colColor] : 'NÃO ENCONTRADA'}`,
+        `📐 Coluna Tamanho: [${colSize}] = ${colSize >= 0 ? headers[colSize] : 'NÃO ENCONTRADA'}`,
+        `🖼️ Coluna Imagem: [${colImg}] = ${colImg >= 0 ? headers[colImg] : 'NÃO ENCONTRADA'}`,
+        ``,
+        `📊 PRIMEIRAS 5 LINHAS DE DADOS BRUTOS:`,
+        ...rawRows.slice(1, 6).map((row, idx) => {
+          const id = row[colId] ?? '—'
+          const title = row[colTitle] ?? '—'
+          const cor = colColor >= 0 ? (row[colColor] ?? '—') : '—'
+          const tam = colSize >= 0 ? (row[colSize] ?? '—') : '—'
+          const img = colImg >= 0 ? String(row[colImg] ?? '').slice(0, 60) : '—'
+          return `  Linha ${idx+2}: ID=[${id}] | Título=[${title}] | Cor=[${cor}] | Tam=[${tam}] | Img=[${img}]`
+        })
+      ]
+      setDebugInfo(diagLines.join('\n'))
 
       const marketplaceRows: MarketplaceListingRow[] = []
 
@@ -80,20 +114,19 @@ export default function PadronizacaoPage() {
         const row = rawRows[r]
         if (!row || row.length === 0) continue
 
-        // Coluna G (índice 6) contendo o título do anúncio
-        const titleVal = String(row[6] || (colTitle !== -1 ? row[colTitle] : '') || '').trim()
+        const titleVal = String(row[colTitle] !== undefined && row[colTitle] !== null ? row[colTitle] : '').trim()
         if (!titleVal) continue
 
-        // Coluna AP (índice 41) contendo o link da foto do anúncio
-        const photoUrlVal = String(row[41] || (colImg !== -1 ? row[colImg] : '') || '').trim()
+        const photoUrlVal = colImg >= 0 ? String(row[colImg] || '').trim() : ''
+        const idVal = colId >= 0 ? String(row[colId] || `ROW-${r + 1}`).trim() : `ROW-${r + 1}`
 
         marketplaceRows.push({
           rowIdx: r + 1,
-          listingId: colId !== -1 ? String(row[colId] || `ROW-${r + 1}`).trim() : `ROW-${r + 1}`,
+          listingId: idVal,
           title: titleVal,
-          status: colStatus !== -1 ? String(row[colStatus] || 'ativo').trim() : 'ativo',
-          colorRaw: colColor !== -1 ? String(row[colColor] || '').trim() : undefined,
-          sizeRaw: colSize !== -1 ? String(row[colSize] || '').trim() : undefined,
+          status: colStatus >= 0 ? String(row[colStatus] || 'ativo').trim() : 'ativo',
+          colorRaw: colColor >= 0 ? String(row[colColor] || '').trim() : undefined,
+          sizeRaw: colSize >= 0 ? String(row[colSize] || '').trim() : undefined,
           imageUrl: photoUrlVal || undefined,
           rawRowData: row
         })
@@ -111,8 +144,9 @@ export default function PadronizacaoPage() {
       setResultData(res)
       setMessage({
         type: 'success',
-        text: `Processamento concluído! ${res.kitsRows.length} linhas de Kits foram formadas de acordo com a Planilha 5 do UpSeller.`
+        text: `Processamento concluído! ${res.allListings.filter(l => l.detectedType === 'kit').length} anúncios de Kit identificados → ${res.kitsRows.length} linhas geradas. ${res.allListings.filter(l => l.listingStatus === 'standardized' && l.detectedType === 'simple').length} simples | ${conjuntosList.length} Pendentes/Conjuntos.`
       })
+      setShowDebug(false)
 
     } catch (err: any) {
       console.error('Erro no processamento de anúncios:', err)
@@ -353,12 +387,30 @@ export default function PadronizacaoPage() {
             </button>
           </div>
 
+          {/* Painel de Diagnóstico Debug */}
+          {debugInfo && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <button
+                onClick={() => setShowDebug(!showDebug)}
+                style={{ padding: '0.4rem 1rem', borderRadius: '6px', background: '#1e293b', border: '1px solid #334155', color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem', marginBottom: '0.5rem' }}
+              >
+                {showDebug ? '🔽 Ocultar' : '🔍 Ver'} Diagnóstico da Planilha Importada
+              </button>
+              {showDebug && (
+                <pre style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: '8px', padding: '1rem', fontSize: '0.75rem', color: '#8b949e', whiteSpace: 'pre-wrap', maxHeight: '300px', overflowY: 'auto' }}>
+                  {debugInfo}
+                </pre>
+              )}
+            </div>
+          )}
+
           {/* Conteúdo Aba Kits */}
           {activeTab === 'kits' && (
             <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', color: '#cbd5e1' }}>
                 <thead>
                   <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                    <th style={{ padding: '0.75rem 1rem', color: '#94a3b8', fontSize: '0.8rem' }}>ID Anúncio</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Kit SKU</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Título do Anúncio</th>
                     <th style={{ padding: '0.75rem 1rem' }}>SKU Oficial Armazém</th>
@@ -367,8 +419,14 @@ export default function PadronizacaoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {resultData.kitsRows.map((r, idx) => (
+                  {resultData.allListings
+                    .filter(listing => listing.detectedType === 'kit' && listing.generatedKitRows.length > 0)
+                    .flatMap(listing =>
+                      listing.generatedKitRows.map((r, idx) => ({ ...r, listingId: listing.listingId, idx }))
+                    )
+                    .map((r, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{r.listingId}</td>
                       <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', fontWeight: 700, color: '#38bdf8' }}>{r.kitSku}</td>
                       <td style={{ padding: '0.65rem 1rem' }}>{r.title}</td>
                       <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#4ade80' }}>{r.sku}</td>
