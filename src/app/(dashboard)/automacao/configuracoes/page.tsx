@@ -22,6 +22,7 @@ export default function AutomationSettings() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [hasExistingConfig, setHasExistingConfig] = useState(false);
+  const [hasExistingPassword, setHasExistingPassword] = useState(false);
 
   // 1. Carregar Clientes
   useEffect(() => {
@@ -69,16 +70,19 @@ export default function AutomationSettings() {
         setPassword(''); // Senhas nunca são expostas de volta por segurança
         setCookiesJson(s.session_cookies ? JSON.stringify(s.session_cookies, null, 2) : '');
         setHasExistingConfig(true);
+        setHasExistingPassword(!!(s.has_password || s.upseller_password_encrypted));
       } else {
         // Limpa campos para novo cadastro
         setEmail('');
         setPassword('');
         setCookiesJson('');
         setHasExistingConfig(false);
+        setHasExistingPassword(false);
       }
     } catch (err) {
       console.error(err);
       setHasExistingConfig(false);
+      setHasExistingPassword(false);
     } finally {
       setLoading(false);
     }
@@ -110,7 +114,7 @@ export default function AutomationSettings() {
         body: JSON.stringify({
           clientId: selectedClientId,
           upseller_email: email,
-          upseller_password: password || undefined, // Apenas atualiza se digitado
+          upseller_password: password.trim() || undefined, // Apenas atualiza se digitado
           run_schedule: 'manual',
           is_active: false,
           session_cookies: parsedCookies
@@ -121,6 +125,9 @@ export default function AutomationSettings() {
 
       if (response.ok && data.success) {
         setMessage({ type: 'success', text: 'Configurações de automação gravadas com sucesso!' });
+        if (password.trim()) {
+          setHasExistingPassword(true);
+        }
         setPassword('');
         setHasExistingConfig(true);
       } else {
@@ -242,21 +249,29 @@ export default function AutomationSettings() {
 
               {/* Senha UpSeller com Olhinho */}
               <div className="form-field">
-                <label className="form-label">Senha de Login (Criptografada)</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <label className="form-label" style={{ margin: 0 }}>Senha de Login (Criptografada)</label>
+                  {hasExistingPassword && !password && (
+                    <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      ✓ Senha salva no sistema
+                    </span>
+                  )}
+                </div>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
                     type={showPassword ? "text" : "password"}
                     className="form-input"
-                    placeholder={hasExistingConfig ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
+                    placeholder={hasExistingPassword ? '•••••••• (Senha mantida - digite para alterar)' : 'Digite a senha do UpSeller'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required={!hasExistingConfig}
+                    required={!hasExistingConfig && !hasExistingPassword}
                     autoComplete="new-password"
                     style={{ paddingRight: '2.5rem', width: '100%', background: '#0d1117', color: '#fff' }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
                     style={{
                       position: 'absolute',
                       right: '10px',
@@ -274,6 +289,11 @@ export default function AutomationSettings() {
                     {showPassword ? '🙈' : '👁️'}
                   </button>
                 </div>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.35rem' }}>
+                  {hasExistingPassword && !password
+                    ? 'A senha atual está salva de forma segura no banco de dados.'
+                    : 'Digite a senha do UpSeller para cadastrar ou atualizar.'}
+                </p>
               </div>
 
             </div>

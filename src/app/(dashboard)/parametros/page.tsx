@@ -20,6 +20,7 @@ export default function ParametrosPage() {
   const [cookiesJson, setCookiesJson] = useState<string>('')
   const [showPassword, setShowPassword] = useState<boolean>(false)
   const [hasExistingConfig, setHasExistingConfig] = useState<boolean>(false)
+  const [hasExistingPassword, setHasExistingPassword] = useState<boolean>(false)
 
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -54,11 +55,13 @@ export default function ParametrosPage() {
           }
 
           setHasExistingConfig(true)
+          setHasExistingPassword(!!(data.settings.has_password || data.settings.upseller_password_encrypted))
         } else {
           setUpsellerEmail('')
           setUpsellerPassword('')
           setCookiesJson('')
           setHasExistingConfig(false)
+          setHasExistingPassword(false)
         }
       } catch (err) {
         console.error('Erro ao carregar credenciais UpSeller:', err)
@@ -89,15 +92,15 @@ export default function ParametrosPage() {
         }
       }
 
-      // 1. Salvar Credenciais & Cookies do UpSeller na API
-      if (upsellerEmail.trim() || parsedCookies) {
+      // 1. Salvar Credenciais & Cookies do UpSeller na API (incluindo quando a senha é informada)
+      if (upsellerEmail.trim() || upsellerPassword.trim() || parsedCookies) {
         const resCreds = await fetch('/api/automacao/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             clientId: selectedClientId,
             upseller_email: upsellerEmail.trim() || undefined,
-            upseller_password: upsellerPassword ? upsellerPassword.trim() : undefined,
+            upseller_password: upsellerPassword.trim() || undefined,
             session_cookies: parsedCookies
           })
         })
@@ -121,9 +124,12 @@ export default function ParametrosPage() {
 
       setMessage({
         type: 'success',
-        text: `Todos os parâmetros, credenciais e cookies do cliente ${selectedClient?.name || ''} foram salvos com sucesso!`
+        text: `Todos os parâmetros, e-mail e credenciais do cliente ${selectedClient?.name || ''} foram salvos com sucesso!`
       })
 
+      if (upsellerPassword.trim()) {
+        setHasExistingPassword(true)
+      }
       setHasExistingConfig(true)
       setUpsellerPassword('')
     } catch (err: any) {
@@ -273,13 +279,20 @@ export default function ParametrosPage() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.4rem' }}>
-                    Senha da Conta UpSeller:
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8' }}>
+                      Senha da Conta UpSeller:
+                    </label>
+                    {hasExistingPassword && !upsellerPassword && (
+                      <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        ✓ Senha salva no sistema
+                      </span>
+                    )}
+                  </div>
                   <div style={{ position: 'relative' }}>
                     <input
                       type={showPassword ? 'text' : 'password'}
-                      placeholder={hasExistingConfig ? '•••••••• (Inalterada)' : 'Digite a senha do UpSeller'}
+                      placeholder={hasExistingPassword ? '•••••••• (Senha mantida - digite para alterar)' : 'Digite a senha do UpSeller'}
                       value={upsellerPassword}
                       onChange={e => setUpsellerPassword(e.target.value)}
                       style={{ width: '100%', padding: '0.75rem 2.5rem 0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff', fontSize: '0.95rem' }}
@@ -287,11 +300,17 @@ export default function ParametrosPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
                       style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.9rem' }}
                     >
                       {showPassword ? '🙈' : '👁️'}
                     </button>
                   </div>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.35rem' }}>
+                    {hasExistingPassword && !upsellerPassword
+                      ? 'A senha atual está salva de forma segura. Digite no campo acima apenas se desejar alterá-la.'
+                      : 'Digite a senha do UpSeller para cadastrar ou atualizar.'}
+                  </p>
                 </div>
               </div>
 

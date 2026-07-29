@@ -26,7 +26,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ settings: null, warning: error.message });
     }
 
-    return NextResponse.json({ settings: data });
+    const settingsData = data ? {
+      ...data,
+      has_password: !!data.upseller_password_encrypted
+    } : null;
+
+    return NextResponse.json({ settings: settingsData });
   } catch (err: any) {
     return NextResponse.json({ settings: null, error: err.message });
   }
@@ -56,9 +61,11 @@ export async function POST(req: Request) {
 
     const upsertData: any = {
       client_id: clientId,
-      upseller_email: upseller_email || existing?.upseller_email || 'cliente@wisementor.com',
-      is_active: is_active ?? true,
-      run_schedule: run_schedule || '0 2 * * *'
+      upseller_email: (upseller_email !== undefined && upseller_email !== '') 
+        ? upseller_email 
+        : (existing?.upseller_email || 'cliente@wisementor.com'),
+      is_active: is_active ?? existing?.is_active ?? true,
+      run_schedule: run_schedule || existing?.run_schedule || '0 2 * * *'
     };
 
     if (session_cookies !== undefined) {
@@ -75,8 +82,10 @@ export async function POST(req: Request) {
       }
     }
 
-    if (upseller_password) {
-      upsertData.upseller_password_encrypted = Buffer.from(upseller_password).toString('base64');
+    if (upseller_password && upseller_password.trim()) {
+      upsertData.upseller_password_encrypted = Buffer.from(upseller_password.trim()).toString('base64');
+    } else if (existing?.upseller_password_encrypted) {
+      upsertData.upseller_password_encrypted = existing.upseller_password_encrypted;
     }
 
     const { data, error } = await supabase
