@@ -554,32 +554,36 @@ export async function processMarketplaceListingsWithVision(
       localErrors.push(errItem)
     }
 
-    // 2. UNIFICAR com componentes extraídos do título (+), respeitando conhecidos não mapeados
-    const titleComponents = extractKitComponents(rawTitle)
+    // 2. O TÍTULO É APENAS SUPORTE/FALLBACK:
+    // Se a Visão AI NÃO foi utilizada (ex: anúncio sem foto ou visão indisponível), extraímos componentes do título.
+    // Se a Visão AI FOI utilizada, a foto tem autoridade total e o título NÃO insere produtos extras!
+    if (!visionUsed) {
+      const titleComponents = extractKitComponents(rawTitle)
 
-    for (const compName of titleComponents) {
-      const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
-      if (found) {
-        const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-        if (!componentSPUs.includes(cleanSpu)) {
-          componentSPUs.push(cleanSpu)
-        }
-      } else {
-        const alreadyLogged = localErrors.some(e => e.originalValue === compName || e.message.includes(compName))
-        if (!alreadyLogged) {
-          const unmappedItem: ErrorLogItem = {
-            type: 'ERRO',
-            clientRow: firstRow.rowIdx,
-            productName: rawTitle,
-            field: 'Componente Não Localizado no Supabase',
-            originalValue: compName,
-            correctedValue: '-',
-            message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
-            generatedFile: 'Kits',
-            upSellerLineRange: '-'
+      for (const compName of titleComponents) {
+        const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
+        if (found) {
+          const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
+          if (!componentSPUs.includes(cleanSpu)) {
+            componentSPUs.push(cleanSpu)
           }
-          globalErrorLogs.push(unmappedItem)
-          localErrors.push(unmappedItem)
+        } else {
+          const alreadyLogged = localErrors.some(e => e.originalValue === compName || e.message.includes(compName))
+          if (!alreadyLogged) {
+            const unmappedItem: ErrorLogItem = {
+              type: 'ERRO',
+              clientRow: firstRow.rowIdx,
+              productName: rawTitle,
+              field: 'Componente Não Localizado no Supabase',
+              originalValue: compName,
+              correctedValue: '-',
+              message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
+              generatedFile: 'Kits',
+              upSellerLineRange: '-'
+            }
+            globalErrorLogs.push(unmappedItem)
+            localErrors.push(unmappedItem)
+          }
         }
       }
     }

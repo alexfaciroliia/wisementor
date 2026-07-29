@@ -90,18 +90,21 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Voce e um especialista em identificacao visual detalhada de produtos de moda (calcados, cintos, carteiras, relogios, fones de ouvido, meias e acessorios).
 
-Analise ATENTAMENTE a imagem fornecida. Esta e uma foto de um KIT/COMBO que contem MULTIPLOS produtos vendidos juntos em um unico anuncio.
+Analise PRIMEIRO E COM PRIORIDADE MAXIMA A IMAGEM FORNECIDA. A IMAGEM E A AUTORIDADE FINAL DA DECISAO.
+Analise a forma visual, o formato, o tipo de display, as cores e as caracteristicas fisicas de CADA produto contido na foto.
 
 LISTA DE PRODUTOS/SPUs DO ARMAZEM DO CLIENTE:
 ${productListText}
 ${titleContext}
 
-INSTRUCOES CRUCIAIS:
-1. Examine TODA a imagem em busca de CADA um dos itens presentes (exemplo: sapatos, tenis, cintos, carteiras, relogios digitais, relogios analogicos, fones de ouvido, etc).
-2. ATENCAO ABSOLUTA PARA RELOGIOS: Diferencie Relogio Digital (display LED/silicone/smartband) de Relogio Analogico (mostrador redondo tradicional com ponteiros). Se a foto tiver um Relogio Digital e o armazem SO TIVER Relogio Analogico (ex: R40 / RELOGIO ANALOGICO), NAO retorne esse SPU! Em vez disso, escreva "UNMAPPED_DIGITAL_WATCH".
-3. Para CADA item visivel na imagem, encontre o SPU correspondente na lista de produtos do armazem acima.
-4. NAO omita nenhum acessorio ou item visivel! Identifique o SPU exato da lista de produtos acima para cada componente do kit.
-5. Responda SOMENTE com os SPUs identificados da lista do armazem, separados por virgula. Exemplo de formato: SPU1, SPU2
+INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL:
+1. Examine a IMAGEM em busca de CADA um dos itens visualmente presentes (exemplo: modelo/formato de sapato/tenis, tipo de cinto, modelo de fone, relogio digital vs analogico, carteira).
+2. PRIORIDADE DA IMAGEM: A foto visual sobressai sobre o titulo. O titulo serve APENAS como apoio secundario.
+3. ATENCAO ABSOLUTA PARA RELOGIOS E ACESSORIOS:
+   - Se a foto mostrar um Relogio Digital (tela LED preta, numeros digitais, pulseira de silicone/smartband) e o armazem SO TIVER Relogio Analogico (ex: R40 / RELOGIO ANALOGICO com ponteiros), NAO RETORNE R40! Escreva "UNMAPPED_DIGITAL_WATCH".
+   - Se a foto mostrar qualquer item que NAO tem correspondente no armazem pelo formato/tipo, escreva "UNMAPPED_[NOME_DO_ITEM]".
+4. Para cada produto da foto que possuir um correspondente no armazem, inclua o SPU da lista do armazem.
+5. Responda SOMENTE com os SPUs identificados da lista do armazem ou itens UNMAPPED, separados por virgula. Exemplo de formato: SPU1, SPU2
 
 RESPOSTA:`
 
