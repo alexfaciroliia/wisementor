@@ -246,41 +246,71 @@ function findExactWarehouseSku(
   targetProducts: WarehouseProductItem[]
 ): string {
   const normSpu = spu.toUpperCase()
+  const cleanTamVal = tam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim()
   const normCor = normalizeForMatch(cor)
-  const normTam = normalizeForMatch(tam)
+  const normTam = normalizeForMatch(cleanTamVal)
 
-  // 1. Busca exata por SPU + Cor + Tamanho
+  // 1. Busca exata por SPU + Cor + Tamanho (ou SKU contendo a cor e tamanho)
   const exactMatch = targetProducts.find(p => {
     const pSpu = p.spu.toUpperCase()
     const pCor = normalizeForMatch(p.color)
     const pTam = normalizeForMatch(p.size)
-    return pSpu === normSpu &&
-           (pCor === normCor || pCor.includes(normCor) || normCor.includes(pCor)) &&
-           (pTam === normTam || pTam.includes(normTam) || normTam.includes(pTam))
+    const pSku = normalizeForMatch(p.sku)
+
+    const spuMatches = pSpu === normSpu || pSku.startsWith(normalizeForMatch(spu))
+    const corMatches = normCor && (pCor === normCor || pCor.includes(normCor) || normCor.includes(pCor) || pSku.includes(normCor))
+    const tamMatches = normTam && (pTam === normTam || pTam.includes(normTam) || normTam.includes(pTam) || pSku.endsWith(normTam))
+
+    return spuMatches && (corMatches || !normCor) && (tamMatches || !normTam)
   })
 
   if (exactMatch && exactMatch.sku) {
     return exactMatch.sku
   }
 
-  // 2. Busca por SPU + Cor (para acessórios sem variação de tamanho)
+  // 2. Busca por SPU + Cor (caso o tamanho não esteja batendo exatamente)
   const spuColorMatch = targetProducts.find(p => {
     const pSpu = p.spu.toUpperCase()
     const pCor = normalizeForMatch(p.color)
-    return pSpu === normSpu && (pCor === normCor || pCor === 'unica' || pCor === 'u' || normCor === 'unica')
+    const pSku = normalizeForMatch(p.sku)
+    const spuMatches = pSpu === normSpu || pSku.startsWith(normalizeForMatch(spu))
+    const corMatches = normCor && (pCor === normCor || pCor.includes(normCor) || normCor.includes(pCor) || pSku.includes(normCor))
+    return spuMatches && (corMatches || pCor === 'unica' || pCor === 'u' || normCor === 'unica')
   })
 
   if (spuColorMatch && spuColorMatch.sku) {
+    if (cleanTamVal && cleanTamVal !== 'u' && cleanTamVal !== 'unica') {
+      const skuParts = spuColorMatch.sku.split('-')
+      if (skuParts.length >= 3) {
+        skuParts[skuParts.length - 1] = cleanTamVal
+        return skuParts.join('-')
+      }
+    }
     return spuColorMatch.sku
   }
 
-  // 3. Fallback: qualquer item cadastrado com esse SPU
-  const spuMatch = targetProducts.find(p => p.spu.toUpperCase() === normSpu)
-  if (spuMatch && spuMatch.sku) {
-    return spuMatch.sku
+  // 3. REGRA CRUCIAL SOLICITADA:
+  // Se a cor do anúncio (ex: CHUMBO) não for encontrada no armazém (ex: só tem Azul Marinho cadastrado),
+  // NUNCA retorne uma cor diferente (Azul Marinho)!
+  // Monte o SKU oficial preservando rigorosamente a Cor (CHUMBO) e o Tamanho (ex: 43) da planilha importada.
+  const spuBaseMatch = targetProducts.find(p => p.spu.toUpperCase() === normSpu)
+  if (spuBaseMatch && spuBaseMatch.sku) {
+    const baseParts = spuBaseMatch.sku.split('-')
+    if (baseParts.length >= 2) {
+      const formattedCor = cor ? (cor.charAt(0).toUpperCase() + cor.slice(1).toLowerCase()) : ''
+      const formattedTam = cleanTamVal ? cleanTamVal : ''
+      
+      if (baseParts.length >= 3) {
+        return `${baseParts[0]}-${formattedCor || baseParts[1]}-${formattedTam || baseParts[2]}`
+      }
+      return `${baseParts[0]}-${formattedCor}-${formattedTam}`.replace(/-+$/, '')
+    }
   }
 
-  return spu
+  // 4. Fallback final formatado com SPU + Cor da Planilha + Tamanho da Planilha sem 'BR'
+  const formattedCor = cor ? (cor.charAt(0).toUpperCase() + cor.slice(1).toLowerCase()) : ''
+  const formattedTam = cleanTamVal ? cleanTamVal : ''
+  return [spu, formattedCor, formattedTam].filter(Boolean).join('-')
 }
 
 // 7. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
@@ -373,7 +403,9 @@ export function processMarketplaceListings(
 
     for (const variationRow of rows) {
       const cor = (variationRow.colorRaw || '').trim()
-      const tam = (variationRow.sizeRaw || 'U').trim()
+      const rawTam = (variationRow.sizeRaw || 'U').trim()
+      // Desconsiderar "BR" do tamanho (exemplo: 37BR -> 37)
+      const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
 
       const cleanCor = removeAccentsAndCedilla(cor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
       const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
@@ -626,7 +658,9 @@ export async function processMarketplaceListingsWithVision(
 
     for (const variationRow of rows) {
       const cor = (variationRow.colorRaw || '').trim()
-      const tam = (variationRow.sizeRaw || 'U').trim()
+      const rawTam = (variationRow.sizeRaw || 'U').trim()
+      // Desconsiderar "BR" do tamanho (exemplo: 37BR -> 37)
+      const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
 
       const cleanCor = removeAccentsAndCedilla(cor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
       const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
