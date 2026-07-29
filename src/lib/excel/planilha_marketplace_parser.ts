@@ -67,7 +67,7 @@ export function extractKitComponents(title: string): string[] {
     let component = part.trim()
     // Remover prefixo "Kit " do primeiro componente
     component = component.replace(/^Kit\s+/i, '').trim()
-    if (component.length > 2) {
+    if (component.length > 1) {
       components.push(component)
     }
   }
@@ -83,8 +83,8 @@ function similarityScore(a: string, b: string): number {
   if (normA === normB) return 1.0
   if (normA.includes(normB) || normB.includes(normA)) return 0.85
 
-  const wordsA = normA.split(/\s+/).filter(w => w.length >= 3)
-  const wordsB = normB.split(/\s+/).filter(w => w.length >= 3)
+  const wordsA = normA.split(/\s+/).filter(w => w.length >= 2)
+  const wordsB = normB.split(/\s+/).filter(w => w.length >= 2)
   if (wordsA.length === 0 || wordsB.length === 0) return 0
 
   let matches = 0
@@ -116,11 +116,96 @@ function findBestProductForComponent(
     }
   }
 
-  // Limiar mínimo de confiança
-  return bestScore >= 0.3 ? bestProduct : null
+  return bestScore >= 0.25 ? bestProduct : null
 }
 
-// 5. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
+// 5. Ordenar SPUs do Kit: Acessórios em Ordem Alfabética PRIMEIRO, Produto Principal por ÚLTIMO
+// Exemplo esperado: KIT-CART-V10-V20-FN-6012-PRETO-38
+function orderKitSpus(componentSpus: string[], targetProducts: WarehouseProductItem[]): string {
+  const accessories: string[] = []
+  const mainProducts: string[] = []
+
+  for (const spu of componentSpus) {
+    const normSpu = spu.toUpperCase()
+    const prods = targetProducts.filter(p => p.spu.toUpperCase() === normSpu || sanitizeText(p.spu).toUpperCase().replace(/\s+/g, '-') === normSpu)
+
+    // Produto principal tem variação numérica de tamanho ou nome referente a calçado/vestuário principal
+    const isMain = prods.some(p => {
+      const normSize = (p.size || '').trim().toLowerCase()
+      const normName = (p.product_name || p.spu || '').toLowerCase()
+      const hasNumericSize = /\d+/.test(normSize) && normSize !== 'u' && normSize !== 'unico' && normSize !== 'unica'
+      const isFootwear = /sapato|tenis|tênis|sapatilha|bota|tamanco|chinelo|sandalia|sandália|mocassim|slip|coturno/.test(normName)
+      return hasNumericSize || isFootwear
+    })
+
+    if (isMain) {
+      if (!mainProducts.includes(spu)) mainProducts.push(spu)
+    } else {
+      if (!accessories.includes(spu)) accessories.push(spu)
+    }
+  }
+
+  // Se nenhum foi classificado como principal (ou todos foram), ordenar tudo alfabeticamente
+  if (mainProducts.length === 0 || accessories.length === 0) {
+    return componentSpus.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('-')
+  }
+
+  // Acessórios ordenados alfabeticamente
+  accessories.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+  
+  // Produtos principais ordenados alfabeticamente
+  mainProducts.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+
+  // Acessórios primeiro, Produto Principal por ÚLTIMO
+  return [...accessories, ...mainProducts].join('-')
+}
+
+// 6. Buscar o SKU exato no Armazém Supabase cruzando SPU + Cor + Tamanho
+function findExactWarehouseSku(
+  spu: string,
+  cor: string,
+  tam: string,
+  targetProducts: WarehouseProductItem[]
+): string {
+  const normSpu = spu.toUpperCase()
+  const normCor = normalizeForMatch(cor)
+  const normTam = normalizeForMatch(tam)
+
+  // 1. Busca exata por SPU + Cor + Tamanho
+  const exactMatch = targetProducts.find(p => {
+    const pSpu = p.spu.toUpperCase()
+    const pCor = normalizeForMatch(p.color)
+    const pTam = normalizeForMatch(p.size)
+    return pSpu === normSpu &&
+           (pCor === normCor || pCor.includes(normCor) || normCor.includes(pCor)) &&
+           (pTam === normTam || pTam.includes(normTam) || normTam.includes(pTam))
+  })
+
+  if (exactMatch && exactMatch.sku) {
+    return exactMatch.sku
+  }
+
+  // 2. Busca por SPU + Cor (para acessórios sem variação de tamanho)
+  const spuColorMatch = targetProducts.find(p => {
+    const pSpu = p.spu.toUpperCase()
+    const pCor = normalizeForMatch(p.color)
+    return pSpu === normSpu && (pCor === normCor || pCor === 'unica' || pCor === 'u' || normCor === 'unica')
+  })
+
+  if (spuColorMatch && spuColorMatch.sku) {
+    return spuColorMatch.sku
+  }
+
+  // 3. Fallback: qualquer item cadastrado com esse SPU
+  const spuMatch = targetProducts.find(p => p.spu.toUpperCase() === normSpu)
+  if (spuMatch && spuMatch.sku) {
+    return spuMatch.sku
+  }
+
+  return spu
+}
+
+// 7. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
 export function processMarketplaceListings(
   marketplaceRows: MarketplaceListingRow[],
   warehouseProducts: WarehouseProductItem[],
@@ -132,7 +217,6 @@ export function processMarketplaceListings(
   const allListings: ProcessedListingResult[] = []
   const globalErrorLogs: ErrorLogItem[] = []
 
-  // Agrupar linhas por ID de anúncio (cada anúncio tem múltiplas linhas = variações)
   const listingsMap = new Map<string, MarketplaceListingRow[]>()
   for (const row of marketplaceRows) {
     const id = row.listingId
@@ -151,136 +235,67 @@ export function processMarketplaceListings(
     const cleanTitle = rawTitle.replace(/\s+/g, ' ').trim()
     const titleLower = rawTitle.toLowerCase()
 
-    // Regra 1: Verificar se é "Conjunto" (termos de exceção → Pendentes)
     const isConjunto = ignoreKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     if (isConjunto) {
       const warningItem: ErrorLogItem = {
-        type: 'AVISO',
-        clientRow: firstRow.rowIdx,
-        productName: rawTitle,
-        field: 'Tipo Anúncio',
-        originalValue: rawTitle,
-        correctedValue: 'PENDENTE (Conjunto)',
+        type: 'AVISO', clientRow: firstRow.rowIdx, productName: rawTitle,
+        field: 'Tipo Anúncio', originalValue: rawTitle, correctedValue: 'PENDENTE (Conjunto)',
         message: 'Anúncio do tipo "Conjunto" identificado. Mantido como Pendente sem alterar SKU.',
-        generatedFile: 'Kits',
-        upSellerLineRange: '-'
+        generatedFile: 'Kits', upSellerLineRange: '-'
       }
       globalErrorLogs.push(warningItem)
-      allListings.push({
-        listingId,
-        title: rawTitle,
-        cleanTitle,
-        statusMarketplace: firstRow.status || 'ativo',
-        listingStatus: 'ignored_conjunto',
-        detectedType: 'conjunto',
-        generatedKitRows: [],
-        errorLogs: [warningItem]
-      })
+      allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'ignored_conjunto', detectedType: 'conjunto', generatedKitRows: [], errorLogs: [warningItem] })
       continue
     }
 
-    // Regra 2: Verificar se é Kit (palavras-chave no título OU presença de "+" separando produtos)
     const hasKitKeyword = kitKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     const hasPlusSeparator = rawTitle.includes('+')
     const isKit = hasKitKeyword || hasPlusSeparator
 
     if (!isKit) {
-      allListings.push({
-        listingId,
-        title: rawTitle,
-        cleanTitle,
-        statusMarketplace: firstRow.status || 'ativo',
-        listingStatus: 'standardized',
-        detectedType: 'simple',
-        generatedKitRows: [],
-        errorLogs: []
-      })
+      allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'simple', generatedKitRows: [], errorLogs: [] })
       continue
     }
 
-    // ── PROCESSAMENTO DE KIT ──
-    // Extrair componentes pelo separador "+" no título
     const kitComponents = extractKitComponents(rawTitle)
     const componentSPUs: string[] = []
-    const componentProducts: WarehouseProductItem[] = []
-    const localErrors: ErrorLogItem[] = []
 
     for (const componentName of kitComponents) {
       const found = findBestProductForComponent(componentName, targetProducts)
       if (found) {
         const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-        // Evitar duplicidade de SPU no mesmo kit
-        if (!componentSPUs.includes(cleanSpu)) {
-          componentSPUs.push(cleanSpu)
-          componentProducts.push(found)
-        }
-      } else {
-        localErrors.push({
-          type: 'AVISO',
-          clientRow: firstRow.rowIdx,
-          productName: rawTitle,
-          field: 'Componente do Kit',
-          originalValue: componentName,
-          correctedValue: '-',
-          message: `Componente "${componentName}" não encontrado no armazém Supabase. Verifique o cadastro de produtos.`,
-          generatedFile: 'Kits',
-          upSellerLineRange: '-'
-        })
+        if (!componentSPUs.includes(cleanSpu)) componentSPUs.push(cleanSpu)
       }
     }
 
     if (componentSPUs.length === 0) {
-      localErrors.forEach(e => globalErrorLogs.push(e))
-      allListings.push({
-        listingId,
-        title: rawTitle,
-        cleanTitle,
-        statusMarketplace: firstRow.status || 'ativo',
-        listingStatus: 'blocked_error',
-        detectedType: 'kit',
-        generatedKitRows: [],
-        errorLogs: localErrors
-      })
+      allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'blocked_error', detectedType: 'kit', generatedKitRows: [], errorLogs: [] })
       continue
     }
 
-    // Ordenar SPUs alfabeticamente para consistência no Kit SKU
-    componentSPUs.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
-    const spuPart = componentSPUs.join('-')
-
-    const imgUrl = firstRow.imageUrl || ''
+    const spuPart = orderKitSpus(componentSPUs, targetProducts)
     const itemKitRows: GeneratedKitRow[] = []
 
-    // Gerar uma linha por variação (cor + tamanho) para cada componente do kit
     for (const variationRow of rows) {
       const cor = (variationRow.colorRaw || '').trim()
       const tam = (variationRow.sizeRaw || 'U').trim()
 
-      const cleanCor = removeAccentsAndCedilla(cor)
-        .replace(/ç/gi, 'c')
-        .replace(/\s+/g, '')
-        .toUpperCase() || 'UNICA'
+      const cleanCor = removeAccentsAndCedilla(cor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
+      const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
 
-      const cleanTam = removeAccentsAndCedilla(tam)
-        .replace(/\s+/g, '')
-        .replace(/[^a-zA-Z0-9-]/g, '')
-        .toUpperCase() || 'U'
-
-      // Formato final: KIT-{SPU1}-{SPU2}-...-{COR}-{TAM}
       let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
+      if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
 
-      // Máximo de 50 caracteres
-      if (kitSku.length > 50) {
-        kitSku = kitSku.slice(0, 50)
-      }
+      // Regra 4: Foto da planilha de anúncios do UpSeller (coluna AP da linha correspondente)
+      const imgForRow = (variationRow.imageUrl || firstRow.imageUrl || '').trim()
 
-      // Uma linha por componente do kit por variação
-      for (const compProduct of componentProducts) {
+      for (const compSpu of componentSPUs) {
+        const officialSku = findExactWarehouseSku(compSpu, cor, tam, targetProducts)
         const kitRow: GeneratedKitRow = {
           kitSku,
           title: cleanTitle,
-          imageUrl: compProduct.image_url || imgUrl,
-          sku: compProduct.sku,
+          imageUrl: imgForRow, // Imagem da coluna AP do UpSeller
+          sku: officialSku,    // SKU exato do armazém no Supabase cruzando SPU+Cor+Tamanho
           skuQty: 1
         }
         kitsRows.push(kitRow)
@@ -288,19 +303,7 @@ export function processMarketplaceListings(
       }
     }
 
-    localErrors.forEach(e => globalErrorLogs.push(e))
-
-    allListings.push({
-      listingId,
-      title: rawTitle,
-      cleanTitle,
-      statusMarketplace: firstRow.status || 'ativo',
-      listingStatus: 'standardized',
-      detectedType: 'kit',
-      kitSku: itemKitRows[0]?.kitSku,
-      generatedKitRows: itemKitRows,
-      errorLogs: localErrors
-    })
+    allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: [] })
   }
 
   return { kitsRows, allListings, errorLogs: globalErrorLogs }
@@ -314,9 +317,8 @@ export type VisionIdentifyFn = (
   imageUrl: string,
   products: WarehouseProductItem[],
   titleHint?: string
-) => Promise<string[]>  // Retorna array de SPUs identificados
+) => Promise<string[]>
 
-// Resultado expandido com info de Vision por anúncio
 export interface VisionProcessingLog {
   listingId: string
   title: string
@@ -327,8 +329,6 @@ export interface VisionProcessingLog {
   fallbackReason?: string
 }
 
-// Processar anúncios com Vision AI como critério primário
-// e fallback para matching por título como apoio
 export async function processMarketplaceListingsWithVision(
   marketplaceRows: MarketplaceListingRow[],
   warehouseProducts: WarehouseProductItem[],
@@ -344,7 +344,6 @@ export async function processMarketplaceListingsWithVision(
   const globalErrorLogs: ErrorLogItem[] = []
   const visionLogs: VisionProcessingLog[] = []
 
-  // Agrupar linhas por ID de anúncio
   const listingsMap = new Map<string, MarketplaceListingRow[]>()
   for (const row of marketplaceRows) {
     const id = row.listingId
@@ -357,7 +356,6 @@ export async function processMarketplaceListingsWithVision(
     ? warehouseProducts.filter(p => sanitizeText(p.spu).toUpperCase().includes(cleanTargetSpu))
     : warehouseProducts
 
-  // Filtrar apenas kits para chamar Vision (anúncios não-kit são tratados diretamente)
   const allEntries = [...listingsMap.entries()]
   const kitEntries = allEntries.filter(([, rows]) => {
     const titleLower = (rows[0].title || '').toLowerCase()
@@ -368,7 +366,6 @@ export async function processMarketplaceListingsWithVision(
     return hasKeyword || hasPlus
   })
 
-  // Cache de imagem → SPUs para não chamar Vision duas vezes para a mesma foto
   const imageVisionCache = new Map<string, string[]>()
   let kitIdx = 0
 
@@ -378,7 +375,6 @@ export async function processMarketplaceListingsWithVision(
     const cleanTitle = rawTitle.replace(/\s+/g, ' ').trim()
     const titleLower = rawTitle.toLowerCase()
 
-    // Regra 1: Conjunto → Pendente
     const isConjunto = ignoreKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     if (isConjunto) {
       const warningItem: ErrorLogItem = {
@@ -392,7 +388,6 @@ export async function processMarketplaceListingsWithVision(
       continue
     }
 
-    // Regra 2: Verificar se é Kit
     const hasKitKeyword = kitKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     const hasPlusSeparator = rawTitle.includes('+')
     const isKit = hasKitKeyword || hasPlusSeparator
@@ -402,7 +397,6 @@ export async function processMarketplaceListingsWithVision(
       continue
     }
 
-    // ── KIT: IDENTIFICAÇÃO DOS COMPONENTES ──
     kitIdx++
     onProgress?.(kitIdx, kitEntries.length, listingId)
 
@@ -413,19 +407,18 @@ export async function processMarketplaceListingsWithVision(
     let fallbackReason = ''
     let visionConfidence = 'none'
 
-    // CRITÉRIO 1 (PRIMÁRIO): Vision AI via foto
+    // 1. Tentar identificar por Vision AI
     if (visionFn && imgUrl) {
       try {
-        // Usar cache se a mesma foto já foi analisada
         if (imageVisionCache.has(imgUrl)) {
-          componentSPUs = imageVisionCache.get(imgUrl)!
+          componentSPUs = [...imageVisionCache.get(imgUrl)!]
           visionUsed = true
           visionConfidence = 'cached'
         } else {
           const identified = await visionFn(imgUrl, targetProducts, rawTitle)
           imageVisionCache.set(imgUrl, identified)
           if (identified.length > 0) {
-            componentSPUs = identified
+            componentSPUs = [...identified]
             visionUsed = true
             visionConfidence = identified.length >= 2 ? 'high' : 'medium'
           }
@@ -435,22 +428,24 @@ export async function processMarketplaceListingsWithVision(
       }
     }
 
-    // CRITÉRIO 2 (FALLBACK): Matching por título (separador "+")
-    if (componentSPUs.length === 0) {
-      fallbackUsed = true
-      fallbackReason = fallbackReason || (!imgUrl ? 'Sem URL de imagem' : !visionFn ? 'Vision AI não configurada' : 'Vision retornou 0 resultados')
-
-      const kitComponents = extractKitComponents(rawTitle)
-      for (const compName of kitComponents) {
-        const found = findBestProductForComponent(compName, targetProducts)
-        if (found) {
-          const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-          if (!componentSPUs.includes(cleanSpu)) componentSPUs.push(cleanSpu)
+    // 2. CRICIAL: UNIFICAR com componentes extraídos do título (+)
+    // Isso garante que se a foto omitiu um acessório (como V20 relógio), o título complementa!
+    const titleComponents = extractKitComponents(rawTitle)
+    for (const compName of titleComponents) {
+      const found = findBestProductForComponent(compName, targetProducts)
+      if (found) {
+        const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
+        if (!componentSPUs.includes(cleanSpu)) {
+          componentSPUs.push(cleanSpu)
         }
       }
     }
 
-    // Registrar log de Vision para diagnóstico
+    if (!visionUsed) {
+      fallbackUsed = true
+      fallbackReason = fallbackReason || (!imgUrl ? 'Sem URL de imagem' : !visionFn ? 'Vision AI não configurada' : 'Vision retornou 0 resultados')
+    }
+
     visionLogs.push({
       listingId,
       title: rawTitle,
@@ -473,15 +468,8 @@ export async function processMarketplaceListingsWithVision(
       continue
     }
 
-    // Mapear SPUs para produtos do armazém
-    const componentProducts = componentSPUs
-      .map(spu => targetProducts.find(p => sanitizeText(p.spu).toUpperCase().replace(/\s+/g, '-') === spu || p.spu.toUpperCase() === spu))
-      .filter(Boolean) as WarehouseProductItem[]
-
-    // Ordenar SPUs alfabeticamente para consistência no Kit SKU
-    const sortedSpus = [...componentSPUs].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
-    const spuPart = sortedSpus.join('-')
-
+    // Regra 2: Ordenar SPUs (Acessórios Alfabéticos PRIMEIRO, Produto Principal por ÚLTIMO)
+    const spuPart = orderKitSpus(componentSPUs, targetProducts)
     const itemKitRows: GeneratedKitRow[] = []
 
     for (const variationRow of rows) {
@@ -494,12 +482,19 @@ export async function processMarketplaceListingsWithVision(
       let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
       if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
 
-      const imgForRow = variationRow.imageUrl || imgUrl
+      // Regra 4: Foto da planilha de anúncios do UpSeller (coluna AP da linha correspondente)
+      const imgForRow = (variationRow.imageUrl || firstRow.imageUrl || '').trim()
 
-      // Uma linha por componente identificado
-      const productsToUse = componentProducts.length > 0 ? componentProducts : [{ spu: spuPart, sku: spuPart, color: '', size: '', product_name: spuPart }]
-      for (const compProduct of productsToUse) {
-        const kitRow: GeneratedKitRow = { kitSku, title: cleanTitle, imageUrl: compProduct.image_url || imgForRow, sku: compProduct.sku, skuQty: 1 }
+      // Regra 3: Buscar o SKU exato no Armazém Supabase cruzando SPU+Cor+Tamanho
+      for (const compSpu of componentSPUs) {
+        const officialWarehouseSku = findExactWarehouseSku(compSpu, cor, tam, targetProducts)
+        const kitRow: GeneratedKitRow = {
+          kitSku,
+          title: cleanTitle,
+          imageUrl: imgForRow,        // Foto da coluna AP do UpSeller da variação correspondente
+          sku: officialWarehouseSku,  // SKU exato do armazém no Supabase para a variação (SPU+Cor+Tamanho)
+          skuQty: 1
+        }
         kitsRows.push(kitRow)
         itemKitRows.push(kitRow)
       }
@@ -510,3 +505,5 @@ export async function processMarketplaceListingsWithVision(
 
   return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs }
 }
+
+

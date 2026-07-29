@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     try {
       const imgRes = await fetch(imageUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WiseMentor/1.0)' },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(12000)
       })
       if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`)
 
@@ -71,31 +71,35 @@ export async function POST(req: NextRequest) {
       } as VisionIdentifyResponse, { status: 200 })
     }
 
-    // Montar lista de produtos para o prompt
-    const productListText = warehouseProducts
-      .map((p, i) => `${i + 1}. SPU:"${p.spu}" | Nome:"${p.product_name}"`)
+    // Montar lista de produtos para o prompt (com SPUs únicos)
+    const spuMap = new Map<string, string>()
+    warehouseProducts.forEach(p => {
+      if (p.spu && !spuMap.has(p.spu.toUpperCase())) {
+        spuMap.set(p.spu.toUpperCase(), p.product_name || p.spu)
+      }
+    })
+
+    const productListText = Array.from(spuMap.entries())
+      .map(([spu, name], i) => `${i + 1}. SPU: "${spu}" | Nome/Categoria: "${name}"`)
       .join('\n')
 
     const titleContext = titleHint
-      ? `\nDICA DO TITULO DO ANUNCIO: "${titleHint}" - use como apoio, mas confie principalmente na imagem.`
+      ? `\nTITULO COMPLETO DO ANUNCIO: "${titleHint}" - Use como apoio crucial para entender quais itens compoem o kit!`
       : ''
 
-    const prompt = `Voce e um especialista em identificacao visual de produtos (calcados, roupas, acessorios).
+    const prompt = `Voce e um especialista em identificacao visual detalhada de produtos de moda (calcados, cintos, carteiras, relogios, fones de ouvido, meias e acessorios).
 
-Analise a imagem fornecida. Esta e uma foto de um KIT composto de varios produtos diferentes vendidos juntos.
+Analise ATENTAMENTE a imagem fornecida. Esta e uma foto de um KIT/COMBO que contem MULTIPLOS produtos vendidos juntos em um unico anuncio.
 
-LISTA DE PRODUTOS DO ARMAZEM DO CLIENTE:
+LISTA DE PRODUTOS/SPUs DO ARMAZEM DO CLIENTE:
 ${productListText}
 ${titleContext}
 
-TAREFA: Identifique quais produtos desta lista aparecem visivelmente na imagem do kit.
-
-REGRAS:
-1. Analise todos os itens visiveis na foto
-2. Retorne os SPUs dos produtos que voce identificar
-3. Nao invente SPUs que nao estao na lista acima
-4. Inclua apenas produtos com mais de 50% de certeza
-5. Responda SOMENTE com os SPUs identificados, separados por virgula. Exemplo: SPU-A, SPU-B, SPU-C
+INSTRUCOES CRUCIAIS:
+1. Examine TODA a imagem em busca de CADA um dos itens presentes (exemplo: sapato/tenis principal, cinto na parte superior, relogio digital/analogico ao lado, carteira de couro no canto inferior, fones de ouvido, etc).
+2. Para CADA item visivel na imagem, encontre o SPU correspondente na lista de produtos do armazem acima.
+3. NAO omita nenhum acessorio! Se houver um relogio, identificque o SPU do relogio. Se houver cinto, identifique o SPU do cinto. Se houver carteira, identifique o SPU da carteira. Se houver sapato/tenis, identifique o SPU do sapato/tenis.
+4. Responda SOMENTE com os SPUs identificados, separados por virgula. Exemplo: CART, V10, V20, FN-6012
 
 RESPOSTA:`
 
@@ -126,9 +130,11 @@ RESPOSTA:`
       const matched = warehouseProducts.find(p => {
         const normToken = token.toUpperCase().replace(/\s+/g, ' ')
         const normSpu = p.spu.toUpperCase().replace(/\s+/g, ' ')
+        const normName = (p.product_name || '').toUpperCase().replace(/\s+/g, ' ')
         return normSpu === normToken ||
                normSpu.includes(normToken) ||
-               normToken.includes(normSpu)
+               normToken.includes(normSpu) ||
+               (normName && normName.includes(normToken))
       })
       if (matched && !mentionedSpus.includes(matched.spu)) {
         mentionedSpus.push(matched.spu)
@@ -155,3 +161,4 @@ RESPOSTA:`
     } as VisionIdentifyResponse, { status: 200 })
   }
 }
+
