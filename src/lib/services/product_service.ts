@@ -369,11 +369,13 @@ export async function getSupabaseProducts(clientId: string): Promise<SupabasePro
 
 export async function createSupabaseProduct(item: Omit<SupabaseProductItem, 'id'>): Promise<{ success: boolean; error?: string }> {
   const supabase = createClient()
-  const payload = {
+  const payload: any = {
     client_id: item.client_id,
-    spu: item.spu,
+    spu: item.spu || item.sku,
     sku: item.sku,
+    sku_upseller: item.sku,
     product_name: item.product_name,
+    description: item.product_name || item.sku,
     supplier: item.supplier || '',
     reference_model: item.reference_model || '',
     color: item.color || '',
@@ -398,8 +400,14 @@ export async function updateSupabaseProduct(id: string, item: Partial<SupabasePr
   }
 
   if (item.spu !== undefined) payload.spu = item.spu
-  if (item.sku !== undefined) payload.sku = item.sku
-  if (item.product_name !== undefined) payload.product_name = item.product_name
+  if (item.sku !== undefined) {
+    payload.sku = item.sku
+    payload.sku_upseller = item.sku
+  }
+  if (item.product_name !== undefined) {
+    payload.product_name = item.product_name
+    payload.description = item.product_name
+  }
   if (item.supplier !== undefined) payload.supplier = item.supplier
   if (item.reference_model !== undefined) payload.reference_model = item.reference_model
   if (item.color !== undefined) payload.color = item.color
