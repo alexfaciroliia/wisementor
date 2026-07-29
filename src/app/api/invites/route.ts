@@ -157,7 +157,11 @@ export async function POST(request: Request) {
         }
 
         emailSent = false
-        actionLink = linkData?.properties?.action_link
+        const origin = new URL(request.url).origin
+        const hashedToken = linkData?.properties?.hashed_token
+        actionLink = hashedToken
+          ? `${origin}/auth/confirm?token_hash=${hashedToken}&type=invite`
+          : linkData?.properties?.action_link
       } else {
         // Reverter inserção no banco se falhar
         await userClient.from('invitations').delete().eq('email', email)

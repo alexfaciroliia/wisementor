@@ -243,7 +243,11 @@ export async function PUT(
         }
 
         emailSent = false
-        actionLink = linkData?.properties?.action_link
+        const origin = new URL(request.url).origin
+        const hashedToken = linkData?.properties?.hashed_token
+        actionLink = hashedToken
+          ? `${origin}/auth/confirm?token_hash=${hashedToken}&type=invite`
+          : linkData?.properties?.action_link
       } else {
         return NextResponse.json({ error: `Erro ao disparar convite: ${inviteError.message}` }, { status: 500 })
       }
