@@ -35,6 +35,10 @@ export default function ArmazemanPage() {
   })
   const [actionLoading, setActionLoading] = useState(false)
 
+  // Visualização de imagem (popup hover e modal click)
+  const [hoveredImg, setHoveredImg] = useState<{ url: string; x: number; y: number } | null>(null)
+  const [modalImg, setModalImg] = useState<string | null>(null)
+
   // Carregar produtos quando o cliente selecionado mudar
   useEffect(() => {
     if (selectedClientId) {
@@ -325,7 +329,24 @@ export default function ArmazemanPage() {
                   <td style={{ padding: '0.65rem 1rem' }}>R$ {Number(p.cost_price || 0).toFixed(2)}</td>
                   <td style={{ padding: '0.65rem 1rem' }}>
                     {p.image_url ? (
-                      <a href={p.image_url} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Ver Foto</a>
+                      <button
+                        type="button"
+                        onClick={() => setModalImg(p.image_url!)}
+                        onMouseEnter={(e) => setHoveredImg({ url: p.image_url!, x: e.clientX, y: e.clientY })}
+                        onMouseMove={(e) => setHoveredImg({ url: p.image_url!, x: e.clientX, y: e.clientY })}
+                        onMouseLeave={() => setHoveredImg(null)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#60a5fa',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                          font: 'inherit'
+                        }}
+                      >
+                        Ver Foto
+                      </button>
                     ) : (
                       <span style={{ color: '#ef4444' }}>Sem link</span>
                     )}
@@ -524,6 +545,123 @@ export default function ArmazemanPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Popover flutuante no Hover */}
+      {hoveredImg && !modalImg && (
+        <div style={{
+          position: 'fixed',
+          left: Math.min(hoveredImg.x + 15, typeof window !== 'undefined' ? window.innerWidth - 270 : 800),
+          top: Math.max(10, Math.min(hoveredImg.y - 120, typeof window !== 'undefined' ? window.innerHeight - 270 : 600)),
+          zIndex: 99999,
+          pointerEvents: 'none',
+          background: '#0f172a',
+          border: '2px solid #3b82f6',
+          borderRadius: '12px',
+          padding: '0.5rem',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 10px 10px -5px rgba(0, 0, 0, 0.6)'
+        }}>
+          <img
+            src={hoveredImg.url}
+            alt="Preview"
+            style={{ width: '230px', height: '230px', objectFit: 'contain', borderRadius: '8px', background: '#fff' }}
+          />
+          <div style={{ fontSize: '0.7rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.25rem' }}>
+            Clique para ampliar
+          </div>
+        </div>
+      )}
+
+      {/* Modal Popup ao Clicar */}
+      {modalImg && (
+        <div
+          onClick={() => setModalImg(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.5rem'
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setModalImg(null)}
+              style={{
+                position: 'absolute',
+                top: '0.75rem',
+                right: '0.75rem',
+                background: '#334155',
+                border: 'none',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="Fechar"
+            >
+              ✕
+            </button>
+
+            <img
+              src={modalImg}
+              alt="Visualização da Foto"
+              style={{
+                maxWidth: '80vw',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                borderRadius: '10px',
+                background: '#fff',
+                padding: '0.5rem'
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: '1rem', width: '100%', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setModalImg(null)}
+                style={{
+                  padding: '0.6rem 1.5rem',
+                  borderRadius: '8px',
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Fechar Visualização
+              </button>
+            </div>
           </div>
         </div>
       )}
