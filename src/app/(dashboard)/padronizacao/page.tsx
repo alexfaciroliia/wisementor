@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { processMarketplaceListings, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult } from '@/lib/excel/planilha_marketplace_parser'
+import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem } from '@/lib/excel/planilha_marketplace_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
 import { fetchWarehouseProducts, getClientParameters } from '@/lib/services/product_service'
 import { useDashboard } from '@/app/(dashboard)/layout'
@@ -19,8 +19,10 @@ export default function PadronizacaoPage() {
   const [debugInfo, setDebugInfo] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
   
-  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors'>('kits')
+  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors' | 'vision'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
+  const [visionProgress, setVisionProgress] = useState<{ current: number; total: number; listingId: string } | null>(null)
+  const [visionLogs, setVisionLogs] = useState<VisionProcessingLog[]>([])
 
   // Processar padronização de SKUs e formação de kits (Prompt 2)
   async function handleProcessMarketplaceSheet() {
@@ -162,14 +164,37 @@ export default function PadronizacaoPage() {
         })
       }
 
-      // 4. Executar Motor de Padronização (Prompt 2)
-      const res = processMarketplaceListings(
+      // 4. Executar Motor de Padronização com Vision AI como critério primário
+      // Função Vision que chama a API /api/vision/identify-kit
+      const visionFn = async (imageUrl: string, products: WarehouseProductItem[], titleHint?: string): Promise<string[]> => {
+        try {
+          const res = await fetch('/api/vision/identify-kit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl, warehouseProducts: products, titleHint })
+          })
+          if (!res.ok) return []
+          const data = await res.json()
+          return data.identifiedSpus || []
+        } catch {
+          return []
+        }
+      }
+
+      setVisionProgress({ current: 0, total: 0, listingId: '' })
+
+      const res = await processMarketplaceListingsWithVision(
         marketplaceRows,
         warehouseProducts,
         targetSpu,
         params.kit_keywords,
-        params.ignore_keywords
+        params.ignore_keywords,
+        visionFn,
+        (current, total, listingId) => setVisionProgress({ current, total, listingId })
       )
+
+      setVisionLogs(res.visionLogs || [])
+      setVisionProgress(null)
 
       setResultData(res)
       setMessage({
@@ -286,7 +311,7 @@ export default function PadronizacaoPage() {
         </div>
 
         {/* Botão de Processar */}
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={handleProcessMarketplaceSheet}
             disabled={processing}
@@ -303,8 +328,21 @@ export default function PadronizacaoPage() {
               gap: '0.5rem'
             }}
           >
-            {processing ? 'Processando Padronização...' : '⚡ Processar Padronização & Formar Kits'}
+            {processing ? 'Processando...' : '⚡ Processar Padronização & Formar Kits'}
           </button>
+
+          {/* Indicador de progresso Vision AI */}
+          {visionProgress && processing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 1rem', borderRadius: '8px', background: '#0f172a', border: '1px solid #7c3aed' }}>
+              <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #7c3aed', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+              <span style={{ color: '#a78bfa', fontSize: '0.85rem', fontWeight: 600 }}>
+                🧠 Vision AI: analisando kit {visionProgress.current}/{visionProgress.total}
+              </span>
+              {visionProgress.listingId && (
+                <span style={{ color: '#64748b', fontSize: '0.75rem', fontFamily: 'monospace' }}>{visionProgress.listingId}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -414,6 +452,21 @@ export default function PadronizacaoPage() {
               }}
             >
               Central de Erros ({errorLogsList.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('vision')}
+              style={{
+                padding: '0.75rem 1.25rem',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === 'vision' ? '3px solid #a78bfa' : 'none',
+                color: activeTab === 'vision' ? '#a78bfa' : '#94a3b8',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              🧠 Vision AI ({visionLogs.length} kits)
             </button>
           </div>
 
@@ -537,6 +590,50 @@ export default function PadronizacaoPage() {
                       <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
                       <td style={{ padding: '0.65rem 1rem', color: '#f87171' }}>{e.originalValue || '-'}</td>
                       <td style={{ padding: '0.65rem 1rem', color: '#cbd5e1' }}>{e.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Conteúdo Aba Vision Log */}
+          {activeTab === 'vision' && (
+            <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                <thead>
+                  <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                    <th style={{ padding: '0.75rem 1rem' }}>ID Anúncio</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Título do Anúncio</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Método de Identificação</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>SPUs Identificados (Visuais)</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Foto do Kit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visionLogs.map((v, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{v.listingId}</td>
+                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{v.title}</td>
+                      <td style={{ padding: '0.65rem 1rem' }}>
+                        {!v.fallbackUsed ? (
+                          <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#4c1d95', color: '#c4b5fd', fontWeight: 600, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            🧠 Vision AI ({v.visionConfidence === 'high' ? 'Alta Confiança' : 'Média Confiança'})
+                          </span>
+                        ) : (
+                          <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#1e293b', color: '#fbbf24', border: '1px solid #d97706', fontWeight: 600, fontSize: '0.75rem' }} title={v.fallbackReason}>
+                            📝 Fallback Título ({v.fallbackReason || 'Vision indisponível'})
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#38bdf8', fontWeight: 700 }}>
+                        {v.visionSpus.length > 0 ? v.visionSpus.join(' + ') : <span style={{ color: '#64748b' }}>Nenhum SPU reconhecido</span>}
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem' }}>
+                        {v.imageUrl ? (
+                          <a href={v.imageUrl} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Ver Foto</a>
+                        ) : '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
