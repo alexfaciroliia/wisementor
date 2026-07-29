@@ -63,47 +63,59 @@ export default function PadronizacaoPage() {
         return
       }
 
-      // Detectar cabeçalhos dinamicamente
-      const headers = rawRows[0].map(h => String(h || '').trim().toLowerCase())
+      // Detectar cabeçalhos dinamicamente com mapeamento para planilha real do UpSeller
+      const headers = rawRows[0].map(h => String(h || '').trim())
+      const headersLower = headers.map(h => h.toLowerCase())
 
       const findColIndex = (keywords: string[]) => {
-        const idx = headers.findIndex(h => keywords.some(k => h.includes(k)))
+        const idx = headersLower.findIndex(h => keywords.some(k => h.includes(k)))
         return idx
       }
 
-      // Mapeamento expandido de colunas para suportar exportações do UpSeller (Mercado Livre, Shopee, etc)
-      let colTitle = findColIndex(['título', 'titulo', 'nome do anúncio', 'anuncio', 'nome do produto', 'title', 'descripcion'])
-      let colStatus = findColIndex(['status', 'situação', 'situacao', 'estado', 'health'])
-      let colId = findColIndex(['item id', 'id do anúncio', 'codigo do anuncio', 'id anuncio', 'anuncio id', 'sku', 'id', 'mlb', 'código', 'codigo'])
-      let colColor = findColIndex(['variação cor', 'variacao cor', 'variante cor', 'cor ', 'cores', 'cor', 'color', 'colour'])
-      let colSize = findColIndex(['variação tamanho', 'variacao tamanho', 'variante tamanho', 'tamanho', 'tam', 'size', 'talle'])
-      let colImg = findColIndex(['url foto principal', 'url da foto', 'foto principal', 'link foto', 'link imagem', 'imagem', 'foto', 'image', 'link', 'url'])
+      // Mapeamento específico para a exportação real do UpSeller
+      // Colunas conhecidas na planilha UpSeller exportada:
+      //   [4] E = ID do Anúncios
+      //   [6] G = Título
+      //   [32] AG = Opção por Variante1 (normalmente Cor)
+      //   [34] AI = Opção por Variante2 (normalmente Tamanho)
+      //   [41] AP = Imagem da Variante1
+      let colId = findColIndex(['id do anúncios', 'id do anuncio', 'item id', 'id anúncio'])
+      let colTitle = findColIndex(['título', 'titulo', 'nome do anúncio', 'title'])
+      let colVariant1Name = findColIndex(['nome variante1', 'nome variante 1'])
+      let colVariant1Val = findColIndex(['opção por variante1', 'opcao por variante1', 'opção variante1'])
+      let colVariant2Name = findColIndex(['nome variante2', 'nome variante 2'])
+      let colVariant2Val = findColIndex(['opção por variante2', 'opcao por variante2', 'opção variante2'])
+      let colImg = findColIndex(['imagem da variante1', 'imagem variante1', 'url foto principal', 'foto principal'])
+      let colStatus = findColIndex(['status', 'situação'])
 
-      // Fallbacks para planilha sem cabeçalho legível
-      if (colTitle === -1) colTitle = 6   // Coluna G é o título na exportação padrão do UpSeller
-      if (colStatus === -1) colStatus = -1
-      if (colId === -1) colId = 0         // Coluna A costuma ser o ID
-      if (colImg === -1) colImg = 41      // Coluna AP é a foto na exportação padrão do UpSeller
+      // Fallbacks para os índices fixos da planilha padrão UpSeller
+      if (colId === -1)          colId = 4
+      if (colTitle === -1)       colTitle = 6
+      if (colVariant1Name === -1) colVariant1Name = 31
+      if (colVariant1Val === -1)  colVariant1Val = 32
+      if (colVariant2Name === -1) colVariant2Name = 33
+      if (colVariant2Val === -1)  colVariant2Val = 34
+      if (colImg === -1)         colImg = 41
 
       // Gerar relatório de diagnóstico
       const diagLines = [
         `📋 Planilha: ${firstSheetName}`,
-        `📏 Total de linhas: ${rawRows.length - 1} (excl. cabeçalho)`,
-        `🔍 Cabeçalhos detectados: ${headers.slice(0, 20).map((h,i) => `[${i}]=${h}`).join(' | ')}`,
+        `📟 Total de linhas: ${rawRows.length - 1} (excl. cabeçalho)`,
         `🏷️ Coluna ID: [${colId}] = ${headers[colId] || '?'}`,
         `📝 Coluna Título: [${colTitle}] = ${headers[colTitle] || '?'}`,
-        `🎨 Coluna Cor: [${colColor}] = ${colColor >= 0 ? headers[colColor] : 'NÃO ENCONTRADA'}`,
-        `📐 Coluna Tamanho: [${colSize}] = ${colSize >= 0 ? headers[colSize] : 'NÃO ENCONTRADA'}`,
-        `🖼️ Coluna Imagem: [${colImg}] = ${colImg >= 0 ? headers[colImg] : 'NÃO ENCONTRADA'}`,
+        `🎨 Coluna Cor (Variante1 Valor): [${colVariant1Val}] = ${headers[colVariant1Val] || '?'}`,
+        `📐 Coluna Tamanho (Variante2 Valor): [${colVariant2Val}] = ${headers[colVariant2Val] || '?'}`,
+        `🖼️ Coluna Imagem: [${colImg}] = ${headers[colImg] || '?'}`,
         ``,
-        `📊 PRIMEIRAS 5 LINHAS DE DADOS BRUTOS:`,
+        `📊 PRIMEIRAS 5 LINHAS DE DADOS:`,
         ...rawRows.slice(1, 6).map((row, idx) => {
           const id = row[colId] ?? '—'
-          const title = row[colTitle] ?? '—'
-          const cor = colColor >= 0 ? (row[colColor] ?? '—') : '—'
-          const tam = colSize >= 0 ? (row[colSize] ?? '—') : '—'
-          const img = colImg >= 0 ? String(row[colImg] ?? '').slice(0, 60) : '—'
-          return `  Linha ${idx+2}: ID=[${id}] | Título=[${title}] | Cor=[${cor}] | Tam=[${tam}] | Img=[${img}]`
+          const title = String(row[colTitle] ?? '').slice(0, 60)
+          const v1n = row[colVariant1Name] ?? ''
+          const v1v = row[colVariant1Val] ?? ''
+          const v2n = row[colVariant2Name] ?? ''
+          const v2v = row[colVariant2Val] ?? ''
+          return `  Linha ${idx+2}: ID=[${id}] | T=[${title}] | ${v1n}=[${v1v}] | ${v2n}=[${v2v}]`
         })
       ]
       setDebugInfo(diagLines.join('\n'))
@@ -117,16 +129,34 @@ export default function PadronizacaoPage() {
         const titleVal = String(row[colTitle] !== undefined && row[colTitle] !== null ? row[colTitle] : '').trim()
         if (!titleVal) continue
 
-        const photoUrlVal = colImg >= 0 ? String(row[colImg] || '').trim() : ''
-        const idVal = colId >= 0 ? String(row[colId] || `ROW-${r + 1}`).trim() : `ROW-${r + 1}`
+        const idVal = String(row[colId] || `ROW-${r + 1}`).trim()
+        const photoUrlVal = String(row[colImg] || '').trim()
+
+        // Detectar qual variante é Cor e qual é Tamanho pelo nome da coluna
+        const v1Name = String(row[colVariant1Name] || '').toLowerCase()
+        const v2Name = String(row[colVariant2Name] || '').toLowerCase()
+        let colorRaw: string | undefined
+        let sizeRaw: string | undefined
+
+        if (v1Name.includes('cor') || v1Name.includes('color')) {
+          colorRaw = String(row[colVariant1Val] || '').trim() || undefined
+          sizeRaw = String(row[colVariant2Val] || '').trim() || undefined
+        } else if (v1Name.includes('tam') || v1Name.includes('size') || v1Name.includes('numero')) {
+          sizeRaw = String(row[colVariant1Val] || '').trim() || undefined
+          colorRaw = String(row[colVariant2Val] || '').trim() || undefined
+        } else {
+          // Fallback: Variante1 = Cor, Variante2 = Tamanho
+          colorRaw = String(row[colVariant1Val] || '').trim() || undefined
+          sizeRaw = String(row[colVariant2Val] || '').trim() || undefined
+        }
 
         marketplaceRows.push({
           rowIdx: r + 1,
           listingId: idVal,
           title: titleVal,
           status: colStatus >= 0 ? String(row[colStatus] || 'ativo').trim() : 'ativo',
-          colorRaw: colColor >= 0 ? String(row[colColor] || '').trim() : undefined,
-          sizeRaw: colSize >= 0 ? String(row[colSize] || '').trim() : undefined,
+          colorRaw,
+          sizeRaw,
           imageUrl: photoUrlVal || undefined,
           rawRowData: row
         })

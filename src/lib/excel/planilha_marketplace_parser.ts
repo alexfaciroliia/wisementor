@@ -47,269 +47,262 @@ export interface ParseMarketplaceResult {
   errorLogs: ErrorLogItem[]
 }
 
-// 1. Extração de quantidade do kit a partir do título do anúncio
-export function parseKitQuantity(title: string): number | null {
-  const clean = title.trim()
-  
-  // Tenta padrões como "Kit 2", "Kit 3", "Kit 10", "Kit c/ 2", "Kit com 3", "2 Pares", "3 Unidades"
-  const kitMatch = clean.match(/kit\s*(?:c\/|com\s*)?(\d+)\b/i)
-  if (kitMatch && kitMatch[1]) {
-    return parseInt(kitMatch[1], 10)
-  }
-
-  const numPrefixMatch = clean.match(/(\d+)\s*(?:unidades|pares|pecas|peças|itens)\b/i)
-  if (numPrefixMatch && numPrefixMatch[1]) {
-    return parseInt(numPrefixMatch[1], 10)
-  }
-
-  return null
-}
-
-// 2. Normalização de String para Busca Fuzzy Tolerante
+// 1. Normalização para busca fuzzy tolerante
 export function normalizeForMatch(str: string): string {
   if (!str) return ''
   let clean = removeAccentsAndCedilla(str).toLowerCase()
-  clean = clean.replace(/ç/g, 'c')
-  clean = clean.replace(/\s*\/\s*/g, '/')
-  clean = clean.replace(/branca/g, 'branco').replace(/preta/g, 'preto').replace(/vermelha/g, 'vermelho')
-  clean = clean.replace(/off white/g, 'off white').replace(/off/g, 'off white')
-  clean = clean.replace(/bebe/g, 'bebe').replace(/bordo/g, 'bordo').replace(/rose/g, 'rose')
-  return clean.replace(/\s+/g, ' ').trim()
+  clean = clean.replace(/ç/gi, 'c')
+  clean = clean.replace(/\s+/g, ' ').trim()
+  return clean
 }
 
-// 3. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
+// 2. Extrair componentes do kit pelo título (separados por "+")
+// Ex: "Kit Sapato Masculino + Relógio Digital + Cinto + Carteira"
+//  -> ["Sapato Masculino", "Relógio Digital", "Cinto", "Carteira"]
+export function extractKitComponents(title: string): string[] {
+  const parts = title.split(/\+/)
+  const components: string[] = []
+
+  for (const part of parts) {
+    let component = part.trim()
+    // Remover prefixo "Kit " do primeiro componente
+    component = component.replace(/^Kit\s+/i, '').trim()
+    if (component.length > 2) {
+      components.push(component)
+    }
+  }
+
+  return components
+}
+
+// 3. Score de similaridade entre dois textos (0 a 1)
+function similarityScore(a: string, b: string): number {
+  const normA = normalizeForMatch(a)
+  const normB = normalizeForMatch(b)
+
+  if (normA === normB) return 1.0
+  if (normA.includes(normB) || normB.includes(normA)) return 0.85
+
+  const wordsA = normA.split(/\s+/).filter(w => w.length >= 3)
+  const wordsB = normB.split(/\s+/).filter(w => w.length >= 3)
+  if (wordsA.length === 0 || wordsB.length === 0) return 0
+
+  let matches = 0
+  for (const wa of wordsA) {
+    if (wordsB.some(wb => wb.includes(wa) || wa.includes(wb))) matches++
+  }
+
+  const recall = matches / wordsA.length
+  const precision = matches / wordsB.length
+  return (recall + precision) / 2
+}
+
+// 4. Encontrar melhor produto no armazém para um componente do kit
+function findBestProductForComponent(
+  componentName: string,
+  warehouseProducts: WarehouseProductItem[]
+): WarehouseProductItem | null {
+  let bestScore = 0
+  let bestProduct: WarehouseProductItem | null = null
+
+  for (const product of warehouseProducts) {
+    const nameScore = similarityScore(componentName, product.product_name || '')
+    const spuScore = similarityScore(componentName, product.spu)
+    const score = Math.max(nameScore, spuScore)
+
+    if (score > bestScore) {
+      bestScore = score
+      bestProduct = product
+    }
+  }
+
+  // Limiar mínimo de confiança
+  return bestScore >= 0.3 ? bestProduct : null
+}
+
+// 5. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
 export function processMarketplaceListings(
   marketplaceRows: MarketplaceListingRow[],
   warehouseProducts: WarehouseProductItem[],
   targetSpu: string = '',
-  kitKeywords: string[] = ['kit', '+', 'pack', 'combo', 'jogo'],
+  kitKeywords: string[] = ['kit', 'pack', 'combo', 'jogo'],
   ignoreKeywords: string[] = ['conjunto']
 ): ParseMarketplaceResult {
   const kitsRows: GeneratedKitRow[] = []
   const allListings: ProcessedListingResult[] = []
   const globalErrorLogs: ErrorLogItem[] = []
-  const processedKitSkusSet = new Set<string>()
+
+  // Agrupar linhas por ID de anúncio (cada anúncio tem múltiplas linhas = variações)
+  const listingsMap = new Map<string, MarketplaceListingRow[]>()
+  for (const row of marketplaceRows) {
+    const id = row.listingId
+    if (!listingsMap.has(id)) listingsMap.set(id, [])
+    listingsMap.get(id)!.push(row)
+  }
 
   const cleanTargetSpu = targetSpu ? sanitizeText(targetSpu).toUpperCase() : ''
-
-  // Filtrar produtos da base oficial se SPU for fornecido, senão usar toda a base do armazém
   const targetProducts = cleanTargetSpu
-    ? warehouseProducts.filter(p => sanitizeText(p.spu).toUpperCase() === cleanTargetSpu)
+    ? warehouseProducts.filter(p => sanitizeText(p.spu).toUpperCase().includes(cleanTargetSpu))
     : warehouseProducts
 
-  marketplaceRows.forEach(item => {
-    const localErrors: ErrorLogItem[] = []
-    const rawTitle = item.title || ''
-    const titleLower = rawTitle.toLowerCase()
-    // Higienização de título: remove espaços duplos e caracteres estranhos
+  for (const [listingId, rows] of listingsMap) {
+    const firstRow = rows[0]
+    const rawTitle = firstRow.title || ''
     const cleanTitle = rawTitle.replace(/\s+/g, ' ').trim()
+    const titleLower = rawTitle.toLowerCase()
 
-    // Regra 1: Verificar se é "Conjunto" (Termos de Exceção não padronizados -> Pendentes)
+    // Regra 1: Verificar se é "Conjunto" (termos de exceção → Pendentes)
     const isConjunto = ignoreKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     if (isConjunto) {
       const warningItem: ErrorLogItem = {
         type: 'AVISO',
-        clientRow: item.rowIdx,
+        clientRow: firstRow.rowIdx,
         productName: rawTitle,
         field: 'Tipo Anúncio',
         originalValue: rawTitle,
         correctedValue: 'PENDENTE (Conjunto)',
-        message: 'Anúncio do tipo "Conjunto" identificado. Mantido no sistema como Pendente sem alterar SKU.',
+        message: 'Anúncio do tipo "Conjunto" identificado. Mantido como Pendente sem alterar SKU.',
         generatedFile: 'Kits',
         upSellerLineRange: '-'
       }
       globalErrorLogs.push(warningItem)
       allListings.push({
-        listingId: item.listingId,
+        listingId,
         title: rawTitle,
         cleanTitle,
-        statusMarketplace: item.status || 'ativo',
+        statusMarketplace: firstRow.status || 'ativo',
         listingStatus: 'ignored_conjunto',
         detectedType: 'conjunto',
         generatedKitRows: [],
         errorLogs: [warningItem]
       })
-      return
+      continue
     }
 
-    // Regra 2: Verificar se é Kit (Identificado pelas palavras-chave ou quantidade de kits)
-    const isKitByKeyword = kitKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
-    const kitQty = parseKitQuantity(rawTitle)
+    // Regra 2: Verificar se é Kit (palavras-chave no título OU presença de "+" separando produtos)
+    const hasKitKeyword = kitKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
+    const hasPlusSeparator = rawTitle.includes('+')
+    const isKit = hasKitKeyword || hasPlusSeparator
 
-    if (!isKitByKeyword && !kitQty) {
-      // Anúncios simples ou não identificados como Kit não geram linhas de Kit
+    if (!isKit) {
       allListings.push({
-        listingId: item.listingId,
+        listingId,
         title: rawTitle,
         cleanTitle,
-        statusMarketplace: item.status || 'ativo',
+        statusMarketplace: firstRow.status || 'ativo',
         listingStatus: 'standardized',
         detectedType: 'simple',
         generatedKitRows: [],
         errorLogs: []
       })
-      return
+      continue
     }
 
-    const qtyTotal = kitQty || 2
+    // ── PROCESSAMENTO DE KIT ──
+    // Extrair componentes pelo separador "+" no título
+    const kitComponents = extractKitComponents(rawTitle)
+    const componentSPUs: string[] = []
+    const componentProducts: WarehouseProductItem[] = []
+    const localErrors: ErrorLogItem[] = []
 
-    // Validação da imagem (Coluna AP na planilha importada)
-    const imgUrl = (item.imageUrl || '').trim()
-
-    // 1. Tentar identificar produto por correspondência direta de foto (Coluna AP) na base do Supabase
-    let matchedByPhoto = false
-    const skuQtyMap = new Map<string, { item: WarehouseProductItem; qty: number }>()
-
-    if (imgUrl) {
-      const photoMatch = targetProducts.find(p => p.image_url && p.image_url.trim() === imgUrl)
-      if (photoMatch) {
-        matchedByPhoto = true
-        skuQtyMap.set(photoMatch.sku, { item: photoMatch, qty: qtyTotal })
-      }
-    }
-
-    // 2. Se não encontrou por foto, faz a decomposição por Cores e Tamanho
-    if (!matchedByPhoto) {
-      const rawColorStr = item.colorRaw || ''
-      const rawSizeStr = item.sizeRaw || 'U'
-
-      let colorList = rawColorStr.split(/_|,|\+/).map(c => c.trim()).filter(Boolean)
-      if (colorList.length === 0) {
-        colorList = [rawColorStr || 'Unica']
-      }
-
-      if (colorList.length === 1 && qtyTotal > 1) {
-        const singleColor = colorList[0]
-        colorList = Array(qtyTotal).fill(singleColor)
-      }
-
-      let hasMatchingError = false
-
-      for (const cName of colorList) {
-        const normColor = normalizeForMatch(cName)
-        const normSize = normalizeForMatch(rawSizeStr)
-
-        const candidates = targetProducts.filter(p => {
-          const pColorNorm = normalizeForMatch(p.color)
-          const pSizeNorm = normalizeForMatch(p.size)
-          return (pColorNorm === normColor || pColorNorm.includes(normColor) || normColor.includes(pColorNorm)) &&
-                 (pSizeNorm === normSize || normSize === 'u' || pSizeNorm === 'u')
-        })
-
-        if (candidates.length === 0) {
-          hasMatchingError = true
-          localErrors.push({
-            type: 'ERRO',
-            clientRow: item.rowIdx,
-            productName: rawTitle,
-            field: 'Cor/Tamanho/Armazém',
-            originalValue: `${cName} - ${rawSizeStr}`,
-            correctedValue: '-',
-            message: `Nenhum SKU oficial do armazém encontrado para '${cName} - ${rawSizeStr}'.`,
-            generatedFile: 'Kits',
-            upSellerLineRange: '-'
-          })
-        } else {
-          const found = candidates[0]
-          const existing = skuQtyMap.get(found.sku)
-          if (existing) {
-            existing.qty += 1
-          } else {
-            skuQtyMap.set(found.sku, { item: found, qty: 1 })
-          }
+    for (const componentName of kitComponents) {
+      const found = findBestProductForComponent(componentName, targetProducts)
+      if (found) {
+        const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
+        // Evitar duplicidade de SPU no mesmo kit
+        if (!componentSPUs.includes(cleanSpu)) {
+          componentSPUs.push(cleanSpu)
+          componentProducts.push(found)
         }
-      }
-
-      if (hasMatchingError && skuQtyMap.size === 0) {
-        localErrors.forEach(err => globalErrorLogs.push(err))
-        allListings.push({
-          listingId: item.listingId,
-          title: rawTitle,
-          cleanTitle,
-          statusMarketplace: item.status || 'ativo',
-          listingStatus: 'blocked_error',
-          detectedType: 'kit',
-          generatedKitRows: [],
-          errorLogs: localErrors
+      } else {
+        localErrors.push({
+          type: 'AVISO',
+          clientRow: firstRow.rowIdx,
+          productName: rawTitle,
+          field: 'Componente do Kit',
+          originalValue: componentName,
+          correctedValue: '-',
+          message: `Componente "${componentName}" não encontrado no armazém Supabase. Verifique o cadastro de produtos.`,
+          generatedFile: 'Kits',
+          upSellerLineRange: '-'
         })
-        return
       }
     }
 
-    // Regra de Formação do Kit SKU:
-    // KIT{QTD}-{SPU}-{CORES_ORDENADAS}-{TAMANHO}
-    const consolidatedList = Array.from(skuQtyMap.values())
-    const spuRef = cleanTargetSpu || (consolidatedList[0]?.item.spu ? sanitizeText(consolidatedList[0].item.spu).toUpperCase() : 'PRODUTO')
-
-    const rawColorsList: string[] = []
-    consolidatedList.forEach(({ item: pItem, qty }) => {
-      const colorClean = removeAccentsAndCedilla(pItem.color || 'UNICA').replace(/ç/gi, 'c').trim()
-      for (let i = 0; i < qty; i++) {
-        rawColorsList.push(colorClean)
-      }
-    })
-
-    // REGRA DE OURO: Cores OBRIGATORIAMENTE ordenadas em ORDEM ALFABÉTICA e separadas por underline "_"
-    rawColorsList.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
-    const coresOrdenadas = rawColorsList.join('_')
-
-    const sampleSize = consolidatedList[0]?.item.size || item.sizeRaw || 'U'
-    const cleanSizeFormatted = removeAccentsAndCedilla(sampleSize).replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
-
-    // Formato padrão: KIT{QTD}-{SPU}-{CORES_ORDENADAS}-{TAMANHO}
-    let generatedKitSku = `KIT${qtyTotal}-${spuRef}-${coresOrdenadas}-${cleanSizeFormatted}`.replace(/\s+/g, '')
-
-    // REGRA MÁXIMA DE 50 CARACTERES: Truncar em 50 caracteres caso ultrapasse
-    if (generatedKitSku.length > 50) {
-      generatedKitSku = generatedKitSku.slice(0, 50)
-    }
-
-    // PREVENÇÃO DE DUPLICIDADE: Omitir se o mesmo Kit SKU já tiver sido gerado neste lote
-    if (processedKitSkusSet.has(generatedKitSku)) {
+    if (componentSPUs.length === 0) {
+      localErrors.forEach(e => globalErrorLogs.push(e))
       allListings.push({
-        listingId: item.listingId,
+        listingId,
         title: rawTitle,
         cleanTitle,
-        statusMarketplace: item.status || 'ativo',
-        listingStatus: 'standardized',
+        statusMarketplace: firstRow.status || 'ativo',
+        listingStatus: 'blocked_error',
         detectedType: 'kit',
-        kitSku: generatedKitSku,
         generatedKitRows: [],
-        errorLogs: []
+        errorLogs: localErrors
       })
-      return
+      continue
     }
 
-    processedKitSkusSet.add(generatedKitSku)
+    // Ordenar SPUs alfabeticamente para consistência no Kit SKU
+    componentSPUs.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+    const spuPart = componentSPUs.join('-')
 
+    const imgUrl = firstRow.imageUrl || ''
     const itemKitRows: GeneratedKitRow[] = []
 
-    // DESMEMBRAMENTO DE COMPONENTES:
-    // 1 linha para cada SKU componente individual com SKU Qnt. correspondente
-    consolidatedList.forEach(({ item: pItem, qty }) => {
-      const kitRow: GeneratedKitRow = {
-        kitSku: generatedKitSku,
-        title: cleanTitle,
-        imageUrl: pItem.image_url || imgUrl,
-        sku: pItem.sku,
-        skuQty: qty
+    // Gerar uma linha por variação (cor + tamanho) para cada componente do kit
+    for (const variationRow of rows) {
+      const cor = (variationRow.colorRaw || '').trim()
+      const tam = (variationRow.sizeRaw || 'U').trim()
+
+      const cleanCor = removeAccentsAndCedilla(cor)
+        .replace(/ç/gi, 'c')
+        .replace(/\s+/g, '')
+        .toUpperCase() || 'UNICA'
+
+      const cleanTam = removeAccentsAndCedilla(tam)
+        .replace(/\s+/g, '')
+        .replace(/[^a-zA-Z0-9-]/g, '')
+        .toUpperCase() || 'U'
+
+      // Formato final: KIT-{SPU1}-{SPU2}-...-{COR}-{TAM}
+      let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
+
+      // Máximo de 50 caracteres
+      if (kitSku.length > 50) {
+        kitSku = kitSku.slice(0, 50)
       }
-      kitsRows.push(kitRow)
-      itemKitRows.push(kitRow)
-    })
+
+      // Uma linha por componente do kit por variação
+      for (const compProduct of componentProducts) {
+        const kitRow: GeneratedKitRow = {
+          kitSku,
+          title: cleanTitle,
+          imageUrl: compProduct.image_url || imgUrl,
+          sku: compProduct.sku,
+          skuQty: 1
+        }
+        kitsRows.push(kitRow)
+        itemKitRows.push(kitRow)
+      }
+    }
+
+    localErrors.forEach(e => globalErrorLogs.push(e))
 
     allListings.push({
-      listingId: item.listingId,
+      listingId,
       title: rawTitle,
       cleanTitle,
-      statusMarketplace: item.status || 'ativo',
+      statusMarketplace: firstRow.status || 'ativo',
       listingStatus: 'standardized',
       detectedType: 'kit',
-      kitSku: generatedKitSku,
+      kitSku: itemKitRows[0]?.kitSku,
       generatedKitRows: itemKitRows,
       errorLogs: localErrors
     })
-  })
+  }
 
   return { kitsRows, allListings, errorLogs: globalErrorLogs }
 }
+
