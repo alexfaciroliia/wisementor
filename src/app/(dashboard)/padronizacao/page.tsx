@@ -26,10 +26,6 @@ export default function PadronizacaoPage() {
       setMessage({ type: 'error', text: 'Selecione um cliente ativo no menu lateral.' })
       return
     }
-    if (!targetSpu.trim()) {
-      setMessage({ type: 'error', text: 'Informe o SPU Oficial do Armazém (ex: AN-SAIDA-CALCA FAIXA).' })
-      return
-    }
     if (!file) {
       setMessage({ type: 'error', text: 'Selecione a planilha de anúncios exportada do UpSeller.' })
       return
@@ -42,13 +38,13 @@ export default function PadronizacaoPage() {
       // 1. Buscar parâmetros do cliente (palavras de kit e conjuntos)
       const params = await getClientParameters(selectedClientId)
 
-      // 2. Buscar produtos oficiais cadastrados no Supabase para o cliente e SPU
+      // 2. Buscar produtos oficiais cadastrados no Supabase para o cliente (e SPU se fornecido)
       const warehouseProducts = await fetchWarehouseProducts(selectedClientId, targetSpu)
 
       if (warehouseProducts.length === 0) {
         setMessage({
           type: 'warning',
-          text: `Atenção: Nenhum produto cadastrado no armazém do Supabase para o SPU '${targetSpu}'. Cadastre primeiro via Planilha 1.`
+          text: `Atenção: Nenhum produto cadastrado no armazém do Supabase${targetSpu ? ` para o SPU '${targetSpu}'` : ''}. Cadastre primeiro via Planilha 1.`
         })
       }
 
@@ -84,8 +80,12 @@ export default function PadronizacaoPage() {
         const row = rawRows[r]
         if (!row || row.length === 0) continue
 
-        const titleVal = String(row[colTitle] || '').trim()
+        // Coluna G (índice 6) contendo o título do anúncio
+        const titleVal = String(row[6] || (colTitle !== -1 ? row[colTitle] : '') || '').trim()
         if (!titleVal) continue
+
+        // Coluna AP (índice 41) contendo o link da foto do anúncio
+        const photoUrlVal = String(row[41] || (colImg !== -1 ? row[colImg] : '') || '').trim()
 
         marketplaceRows.push({
           rowIdx: r + 1,
@@ -94,7 +94,7 @@ export default function PadronizacaoPage() {
           status: colStatus !== -1 ? String(row[colStatus] || 'ativo').trim() : 'ativo',
           colorRaw: colColor !== -1 ? String(row[colColor] || '').trim() : undefined,
           sizeRaw: colSize !== -1 ? String(row[colSize] || '').trim() : undefined,
-          imageUrl: colImg !== -1 ? String(row[colImg] || '').trim() : undefined,
+          imageUrl: photoUrlVal || undefined,
           rawRowData: row
         })
       }
@@ -111,7 +111,7 @@ export default function PadronizacaoPage() {
       setResultData(res)
       setMessage({
         type: 'success',
-        text: `Processamento concluído! ${res.kitsRows.length} linhas de Kits foram formadas e prontas para exportação.`
+        text: `Processamento concluído! ${res.kitsRows.length} linhas de Kits foram formadas de acordo com a Planilha 5 do UpSeller.`
       })
 
     } catch (err: any) {
@@ -122,7 +122,7 @@ export default function PadronizacaoPage() {
     }
   }
 
-  // Baixar arquivo Excel de Kits para UpSeller
+  // Baixar arquivo Excel de Kits para UpSeller (Planilha 5)
   function downloadKitsExcel() {
     if (!resultData) return
     const buffer = generateKitsExcel(resultData.kitsRows, resultData.errorLogs)
@@ -130,7 +130,7 @@ export default function PadronizacaoPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `UpSeller_Importacao_Kits_${targetSpu.replace(/\s+/g, '_')}.xlsx`
+    a.download = targetSpu.trim() ? `UpSeller_Importacao_Kits_${targetSpu.replace(/\s+/g, '_')}.xlsx` : 'Planilha_5_Modelo_Kit_UpSeller.xlsx'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -196,11 +196,11 @@ export default function PadronizacaoPage() {
           {/* SPU Oficial do Armazém */}
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-              SPU Oficial do Produto no Armazém (Obrigatório):
+              SPU Oficial do Produto no Armazém (Opcional):
             </label>
             <input
               type="text"
-              placeholder="Ex: AN-SAIDA-CALCA FAIXA"
+              placeholder="Ex: AN-SAIDA-CALCA FAIXA (Deixe em branco para buscar todos)"
               value={targetSpu}
               onChange={e => setTargetSpu(e.target.value)}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff' }}

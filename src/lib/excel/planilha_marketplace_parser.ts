@@ -77,57 +77,35 @@ export function normalizeForMatch(str: string): string {
   return clean.replace(/\s+/g, ' ').trim()
 }
 
-// 3. Processar Anúncios do Marketplace conforme Prompt 2
+// 3. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
 export function processMarketplaceListings(
   marketplaceRows: MarketplaceListingRow[],
   warehouseProducts: WarehouseProductItem[],
-  targetSpu: string,
+  targetSpu: string = '',
   kitKeywords: string[] = ['kit', '+', 'pack', 'combo', 'jogo'],
   ignoreKeywords: string[] = ['conjunto']
 ): ParseMarketplaceResult {
   const kitsRows: GeneratedKitRow[] = []
   const allListings: ProcessedListingResult[] = []
   const globalErrorLogs: ErrorLogItem[] = []
+  const processedKitSkusSet = new Set<string>()
 
-  const cleanTargetSpu = sanitizeText(targetSpu).toUpperCase()
+  const cleanTargetSpu = targetSpu ? sanitizeText(targetSpu).toUpperCase() : ''
 
-  // Filtrar produtos da base oficial do UpSeller para o SPU informado
-  const officialProducts = warehouseProducts.filter(p => sanitizeText(p.spu).toUpperCase() === cleanTargetSpu)
+  // Filtrar produtos da base oficial se SPU for fornecido, senão usar toda a base do armazém
+  const targetProducts = cleanTargetSpu
+    ? warehouseProducts.filter(p => sanitizeText(p.spu).toUpperCase() === cleanTargetSpu)
+    : warehouseProducts
 
   marketplaceRows.forEach(item => {
     const localErrors: ErrorLogItem[] = []
     const rawTitle = item.title || ''
     const titleLower = rawTitle.toLowerCase()
-    const cleanTitle = sanitizeText(rawTitle)
+    // Higienização de título: remove espaços duplos e caracteres estranhos
+    const cleanTitle = rawTitle.replace(/\s+/g, ' ').trim()
 
-    // Regra 2: Somente processar anúncios ativos
-    const isAtivo = /^(ativo|active|1|sim|enabled)$/i.test((item.status || '').trim())
-    if (!isAtivo) {
-      allListings.push({
-        listingId: item.listingId,
-        title: rawTitle,
-        cleanTitle,
-        statusMarketplace: item.status || 'inativo',
-        listingStatus: 'blocked_error',
-        detectedType: 'unknown',
-        generatedKitRows: [],
-        errorLogs: [{
-          type: 'ERRO',
-          clientRow: item.rowIdx,
-          productName: rawTitle,
-          field: 'Status Anúncio',
-          originalValue: item.status || '',
-          correctedValue: '-',
-          message: 'Anúncio não está ativo. Ignorado conforme regra de segurança.',
-          generatedFile: 'Kits',
-          upSellerLineRange: '-'
-        }]
-      })
-      return
-    }
-
-    // Regra: Verificar se é "Conjunto" (Conjuntos não são padronizados e ficam como Pendentes)
-    const isConjunto = ignoreKeywords.some(kw => titleLower.includes(kw.toLowerCase()))
+    // Regra 1: Verificar se é "Conjunto" (Termos de Exceção não padronizados -> Pendentes)
+    const isConjunto = ignoreKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     if (isConjunto) {
       const warningItem: ErrorLogItem = {
         type: 'AVISO',
@@ -145,7 +123,7 @@ export function processMarketplaceListings(
         listingId: item.listingId,
         title: rawTitle,
         cleanTitle,
-        statusMarketplace: item.status,
+        statusMarketplace: item.status || 'ativo',
         listingStatus: 'ignored_conjunto',
         detectedType: 'conjunto',
         generatedKitRows: [],
@@ -154,17 +132,17 @@ export function processMarketplaceListings(
       return
     }
 
-    // Verificar se é Kit
-    const isKitByKeyword = kitKeywords.some(kw => titleLower.includes(kw.toLowerCase()))
+    // Regra 2: Verificar se é Kit (Identificado pelas palavras-chave ou quantidade de kits)
+    const isKitByKeyword = kitKeywords.some(kw => kw.trim() && titleLower.includes(kw.trim().toLowerCase()))
     const kitQty = parseKitQuantity(rawTitle)
 
     if (!isKitByKeyword && !kitQty) {
-      // Tratar como Anúncio Simples
+      // Anúncios simples ou não identificados como Kit não geram linhas de Kit
       allListings.push({
         listingId: item.listingId,
         title: rawTitle,
         cleanTitle,
-        statusMarketplace: item.status,
+        statusMarketplace: item.status || 'ativo',
         listingStatus: 'standardized',
         detectedType: 'simple',
         generatedKitRows: [],
@@ -173,152 +151,144 @@ export function processMarketplaceListings(
       return
     }
 
-    // Se for kit, validação obrigatória da quantidade
     const qtyTotal = kitQty || 2
 
-    // Validação da imagem
+    // Validação da imagem (Coluna AP na planilha importada)
     const imgUrl = (item.imageUrl || '').trim()
-    if (!imgUrl || (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://'))) {
-      localErrors.push({
-        type: 'ERRO',
-        clientRow: item.rowIdx,
-        productName: rawTitle,
-        field: 'Imagem',
-        originalValue: imgUrl,
-        correctedValue: '',
-        message: 'Link de imagem do kit ausente ou inválido (deve iniciar com http:// ou https://).',
-        generatedFile: 'Kits',
-        upSellerLineRange: '-'
-      })
-    }
 
-    // Validação da base oficial do UpSeller para o SPU
-    if (officialProducts.length === 0) {
-      localErrors.push({
-        type: 'ERRO',
-        clientRow: item.rowIdx,
-        productName: rawTitle,
-        field: 'SPU',
-        originalValue: targetSpu,
-        correctedValue: '',
-        message: `SPU '${targetSpu}' não encontrado na base oficial de produtos do UpSeller.`,
-        generatedFile: 'Kits',
-        upSellerLineRange: '-'
-      })
-    }
-
-    // Decomposição de variações de cores e tamanho
-    const rawColorStr = item.colorRaw || ''
-    const rawSizeStr = item.sizeRaw || 'U'
-
-    // Separar cores por underline, vírgula, mais ou barra quando representarem múltiplas unidades
-    let colorList = rawColorStr.split(/_|,|\+/).map(c => c.trim()).filter(Boolean)
-    if (colorList.length === 0) {
-      colorList = [rawColorStr || 'Unica']
-    }
-
-    // Se a quantidade do kit for 3 e tiver apenas 1 cor no título (ex: "Preto"), repete a cor
-    if (colorList.length === 1 && qtyTotal > 1) {
-      const singleColor = colorList[0]
-      colorList = Array(qtyTotal).fill(singleColor)
-    }
-
-    // Localizar SKUs oficiais correspondentes
-    const matchedOfficialSkus: { officialItem: WarehouseProductItem; qty: number }[] = []
+    // 1. Tentar identificar produto por correspondência direta de foto (Coluna AP) na base do Supabase
+    let matchedByPhoto = false
     const skuQtyMap = new Map<string, { item: WarehouseProductItem; qty: number }>()
 
-    let hasMatchingError = false
-
-    for (const cName of colorList) {
-      const normColor = normalizeForMatch(cName)
-      const normSize = normalizeForMatch(rawSizeStr)
-
-      // Busca por correspondência exata ou fuzzy
-      const candidates = officialProducts.filter(p => {
-        const pColorNorm = normalizeForMatch(p.color)
-        const pSizeNorm = normalizeForMatch(p.size)
-        return (pColorNorm === normColor || pColorNorm.includes(normColor)) &&
-               (pSizeNorm === normSize || normSize === 'u' || pSizeNorm === 'u')
-      })
-
-      if (candidates.length === 0) {
-        hasMatchingError = true
-        localErrors.push({
-          type: 'ERRO',
-          clientRow: item.rowIdx,
-          productName: rawTitle,
-          field: 'Cor/Tamanho',
-          originalValue: `${cName} - ${rawSizeStr}`,
-          correctedValue: '-',
-          message: `Nenhum SKU oficial do armazém encontrado para a variação '${cName} - ${rawSizeStr}' no SPU '${cleanTargetSpu}'.`,
-          generatedFile: 'Kits',
-          upSellerLineRange: '-'
-        })
-      } else if (candidates.length > 1) {
-        hasMatchingError = true
-        localErrors.push({
-          type: 'ERRO',
-          clientRow: item.rowIdx,
-          productName: rawTitle,
-          field: 'Correspondência',
-          originalValue: `${cName} - ${rawSizeStr}`,
-          correctedValue: candidates.map(c => c.sku).join(' | '),
-          message: `Correspondência ambígua! Mais de um SKU oficial candidato encontrado.`,
-          generatedFile: 'Kits',
-          upSellerLineRange: '-'
-        })
-      } else {
-        const found = candidates[0]
-        const existing = skuQtyMap.get(found.sku)
-        if (existing) {
-          existing.qty += 1
-        } else {
-          skuQtyMap.set(found.sku, { item: found, qty: 1 })
-        }
+    if (imgUrl) {
+      const photoMatch = targetProducts.find(p => p.image_url && p.image_url.trim() === imgUrl)
+      if (photoMatch) {
+        matchedByPhoto = true
+        skuQtyMap.set(photoMatch.sku, { item: photoMatch, qty: qtyTotal })
       }
     }
 
-    // Se houve erro bloqueante, registra e aborta geração das linhas do kit
-    if (hasMatchingError || localErrors.some(e => e.type === 'ERRO')) {
-      localErrors.forEach(err => globalErrorLogs.push(err))
+    // 2. Se não encontrou por foto, faz a decomposição por Cores e Tamanho
+    if (!matchedByPhoto) {
+      const rawColorStr = item.colorRaw || ''
+      const rawSizeStr = item.sizeRaw || 'U'
+
+      let colorList = rawColorStr.split(/_|,|\+/).map(c => c.trim()).filter(Boolean)
+      if (colorList.length === 0) {
+        colorList = [rawColorStr || 'Unica']
+      }
+
+      if (colorList.length === 1 && qtyTotal > 1) {
+        const singleColor = colorList[0]
+        colorList = Array(qtyTotal).fill(singleColor)
+      }
+
+      let hasMatchingError = false
+
+      for (const cName of colorList) {
+        const normColor = normalizeForMatch(cName)
+        const normSize = normalizeForMatch(rawSizeStr)
+
+        const candidates = targetProducts.filter(p => {
+          const pColorNorm = normalizeForMatch(p.color)
+          const pSizeNorm = normalizeForMatch(p.size)
+          return (pColorNorm === normColor || pColorNorm.includes(normColor) || normColor.includes(pColorNorm)) &&
+                 (pSizeNorm === normSize || normSize === 'u' || pSizeNorm === 'u')
+        })
+
+        if (candidates.length === 0) {
+          hasMatchingError = true
+          localErrors.push({
+            type: 'ERRO',
+            clientRow: item.rowIdx,
+            productName: rawTitle,
+            field: 'Cor/Tamanho/Armazém',
+            originalValue: `${cName} - ${rawSizeStr}`,
+            correctedValue: '-',
+            message: `Nenhum SKU oficial do armazém encontrado para '${cName} - ${rawSizeStr}'.`,
+            generatedFile: 'Kits',
+            upSellerLineRange: '-'
+          })
+        } else {
+          const found = candidates[0]
+          const existing = skuQtyMap.get(found.sku)
+          if (existing) {
+            existing.qty += 1
+          } else {
+            skuQtyMap.set(found.sku, { item: found, qty: 1 })
+          }
+        }
+      }
+
+      if (hasMatchingError && skuQtyMap.size === 0) {
+        localErrors.forEach(err => globalErrorLogs.push(err))
+        allListings.push({
+          listingId: item.listingId,
+          title: rawTitle,
+          cleanTitle,
+          statusMarketplace: item.status || 'ativo',
+          listingStatus: 'blocked_error',
+          detectedType: 'kit',
+          generatedKitRows: [],
+          errorLogs: localErrors
+        })
+        return
+      }
+    }
+
+    // Regra de Formação do Kit SKU:
+    // KIT{QTD}-{SPU}-{CORES_ORDENADAS}-{TAMANHO}
+    const consolidatedList = Array.from(skuQtyMap.values())
+    const spuRef = cleanTargetSpu || (consolidatedList[0]?.item.spu ? sanitizeText(consolidatedList[0].item.spu).toUpperCase() : 'PRODUTO')
+
+    const rawColorsList: string[] = []
+    consolidatedList.forEach(({ item: pItem, qty }) => {
+      const colorClean = removeAccentsAndCedilla(pItem.color || 'UNICA').replace(/ç/gi, 'c').trim()
+      for (let i = 0; i < qty; i++) {
+        rawColorsList.push(colorClean)
+      }
+    })
+
+    // REGRA DE OURO: Cores OBRIGATORIAMENTE ordenadas em ORDEM ALFABÉTICA e separadas por underline "_"
+    rawColorsList.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+    const coresOrdenadas = rawColorsList.join('_')
+
+    const sampleSize = consolidatedList[0]?.item.size || item.sizeRaw || 'U'
+    const cleanSizeFormatted = removeAccentsAndCedilla(sampleSize).replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
+
+    // Formato padrão: KIT{QTD}-{SPU}-{CORES_ORDENADAS}-{TAMANHO}
+    let generatedKitSku = `KIT${qtyTotal}-${spuRef}-${coresOrdenadas}-${cleanSizeFormatted}`.replace(/\s+/g, '')
+
+    // REGRA MÁXIMA DE 50 CARACTERES: Truncar em 50 caracteres caso ultrapasse
+    if (generatedKitSku.length > 50) {
+      generatedKitSku = generatedKitSku.slice(0, 50)
+    }
+
+    // PREVENÇÃO DE DUPLICIDADE: Omitir se o mesmo Kit SKU já tiver sido gerado neste lote
+    if (processedKitSkusSet.has(generatedKitSku)) {
       allListings.push({
         listingId: item.listingId,
         title: rawTitle,
         cleanTitle,
-        statusMarketplace: item.status,
-        listingStatus: 'blocked_error',
+        statusMarketplace: item.status || 'ativo',
+        listingStatus: 'standardized',
         detectedType: 'kit',
+        kitSku: generatedKitSku,
         generatedKitRows: [],
-        errorLogs: localErrors
+        errorLogs: []
       })
       return
     }
 
-    // Formação do Kit SKU: KIT(QTD)-SPU-CORES_SEPARADAS_POR_UNDERLINE-TAMANHO
-    const consolidatedList = Array.from(skuQtyMap.values())
-    const colorsFormatted: string[] = []
-
-    consolidatedList.forEach(({ item: pItem, qty }) => {
-      const colorClean = removeAccentsAndCedilla(pItem.color).replace(/ç/gi, 'c')
-      for (let i = 0; i < qty; i++) {
-        colorsFormatted.push(colorClean)
-      }
-    })
-
-    // Ordenar as cores em ordem alfabética para garantir a regra anti-duplicidade (ex: Azul Bebe_Bege)
-    colorsFormatted.sort((a, b) => a.localeCompare(b))
-
-    const sampleSize = consolidatedList[0]?.item.size || rawSizeStr
-    const cleanSizeFormatted = removeAccentsAndCedilla(sampleSize)
-
-    const kitSku = `KIT${qtyTotal}-${cleanTargetSpu}-${colorsFormatted.join('_')}-${cleanSizeFormatted}`.replace(/\s+/g, ' ')
+    processedKitSkusSet.add(generatedKitSku)
 
     const itemKitRows: GeneratedKitRow[] = []
 
-    // Gerar linhas da aba "Formação dos Kits"
+    // DESMEMBRAMENTO DE COMPONENTES:
+    // 1 linha para cada SKU componente individual com SKU Qnt. correspondente
     consolidatedList.forEach(({ item: pItem, qty }) => {
       const kitRow: GeneratedKitRow = {
-        kitSku,
+        kitSku: generatedKitSku,
         title: cleanTitle,
         imageUrl: pItem.image_url || imgUrl,
         sku: pItem.sku,
@@ -332,10 +302,10 @@ export function processMarketplaceListings(
       listingId: item.listingId,
       title: rawTitle,
       cleanTitle,
-      statusMarketplace: item.status,
+      statusMarketplace: item.status || 'ativo',
       listingStatus: 'standardized',
       detectedType: 'kit',
-      kitSku,
+      kitSku: generatedKitSku,
       generatedKitRows: itemKitRows,
       errorLogs: localErrors
     })

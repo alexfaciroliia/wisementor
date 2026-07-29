@@ -186,31 +186,54 @@ export function generateWarehouseExcel(
   return XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
 }
 
-// 2. Gerar Arquivo Excel Oficial de Importação de Kits (Prompt 2)
+// 2. Gerar Arquivo Excel Oficial de Importação de Kits (Planilha 5 - Modelo Kit UpSeller)
 export function generateKitsExcel(
   kitRows: GeneratedKitRow[],
   errors: ErrorLogItem[]
 ): ArrayBuffer {
   const wb = XLSX.utils.book_new()
 
-  // Aba principal "Formação dos Kits" (Exatamente 5 colunas)
-  const kitHeaders = ['Kit SKU', 'Título', 'Imagem', 'SKU', 'SKU Qnt.']
-  const kitRowsData: any[][] = [kitHeaders]
+  // Cabeçalhos Exatos da Planilha 5 (Import_Kit_Template_BR)
+  const P5_EXACT_HEADERS = [
+    'Kit SKU*\n(Requer,1-200 caractéres limites de números, letras e símbolos.)',
+    'Título*\n(Requer,1-500 caractéres)',
+    'Imagem',
+    'SKU*\n(Requer)',
+    'SKU Qnt.*\n(Requer)'
+  ]
+
+  const kitRowsData: any[][] = [P5_EXACT_HEADERS]
 
   kitRows.forEach(r => {
     kitRowsData.push([
       r.kitSku,
       r.title,
-      r.imageUrl,
+      r.imageUrl || '',
       r.sku,
       r.skuQty
     ])
   })
 
+  // Aba Principal: Import_Kit_Template_BR
   const wsKits = XLSX.utils.aoa_to_sheet(kitRowsData)
-  XLSX.utils.book_append_sheet(wb, wsKits, 'Formação dos Kits')
+  XLSX.utils.book_append_sheet(wb, wsKits, 'Import_Kit_Template_BR')
 
-  // Aba "Erros"
+  // Aba Origin exigida pelo UpSeller
+  const originRows = [
+    ['0 - Nacional, exceto as indicadas nos códigos 3, 4, 5 e 8'],
+    ['1 - Estrangeira - Importação direta, exceto a indicada no código 6'],
+    ['2 - Estrangeira - Adquirida no mercado interno, exceto a indicada no código 7'],
+    ['3 - Nacional, mercadoria ou bem com Conteúdo de Importação superior a 40% e inferior ou igual a 70%'],
+    ['4 - Nacional, cuja produção tenha sido feita em conformidade com os processos produtivos básicos de que tratam as legislações citadas nos Ajustes'],
+    ['5 - Nacional, mercadoria ou bem com Conteúdo de Importação inferior ou igual a 40%'],
+    ['6 - Estrangeira - Importação direta, sem similar nacional, constante em lista da CAMEX e gás natural'],
+    ['7 - Estrangeira - Adquirida no mercado interno, sem similar nacional, constante lista CAMEX e gás natural'],
+    ['8 - Nacional, mercadoria ou bem com Conteúdo de Importação superior a 70%']
+  ]
+  const wsOrigin = XLSX.utils.aoa_to_sheet(originRows)
+  XLSX.utils.book_append_sheet(wb, wsOrigin, 'Origin')
+
+  // Aba "Erros" para Auditoria
   const errorHeaders = [
     'Tipo da ocorrência',
     'Linha da planilha de anúncios',
@@ -233,8 +256,8 @@ export function generateKitsExcel(
       e.originalValue,
       e.correctedValue,
       e.message,
-      e.generatedFile,
-      e.upSellerLineRange
+      e.generatedFile || 'Kits',
+      e.upSellerLineRange || '-'
     ])
   })
 
