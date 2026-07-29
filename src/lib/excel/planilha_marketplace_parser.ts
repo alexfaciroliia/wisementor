@@ -80,6 +80,16 @@ function similarityScore(a: string, b: string): number {
   const normA = normalizeForMatch(a)
   const normB = normalizeForMatch(b)
 
+  // DISTINÇÃO CRUCIAL: Relógio Analógico NÃO PODE ser igualado a Relógio Digital!
+  const isAAnalog = /analogico|analógico/i.test(normA)
+  const isADigital = /digital/i.test(normA)
+  const isBAnalog = /analogico|analógico/i.test(normB)
+  const isBDigital = /digital/i.test(normB)
+
+  if ((isAAnalog && isBDigital) || (isADigital && isBAnalog)) {
+    return 0 // Impossibilita associação cruzada entre relógio analógico e digital
+  }
+
   if (normA === normB) return 1.0
   if (normA.includes(normB) || normB.includes(normA)) return 0.85
 
@@ -98,12 +108,33 @@ function similarityScore(a: string, b: string): number {
 }
 
 // Tabela de sinônimos e padrões de categorias para busca tolerante de produtos no armazém
-const CATEGORY_ALIASES: Array<{ keywords: RegExp; spuPatterns: RegExp }> = [
-  { keywords: /relogio|relógio|watch|digital|analogico|analógico/i, spuPatterns: /v20|rel|watch|relogio/i },
-  { keywords: /carteira|wallet/i, spuPatterns: /v10|cart|wallet|carteira/i },
-  { keywords: /cinto|belt/i, spuPatterns: /cart|c10|cinto|belt/i },
-  { keywords: /fone|headphone|bluetooth|airpod/i, spuPatterns: /fone|bt|bluetooth/i },
-  { keywords: /meia|meias|sock/i, spuPatterns: /meia|sock/i }
+const CATEGORY_ALIASES: Array<{ keywords: RegExp; spuPatterns: RegExp; excludeKeywords?: RegExp }> = [
+  { 
+    keywords: /relogio\s*digital|relógio\s*digital|digital\s*watch/i, 
+    spuPatterns: /v20|rel-dig|digital/i,
+    excludeKeywords: /analogico|analógico/i
+  },
+  { 
+    keywords: /relogio\s*analogico|relógio\s*analógico|relogio\s*analog|relógio\s*analog|analog\s*watch/i, 
+    spuPatterns: /rel-ana|analogico|analógico/i,
+    excludeKeywords: /digital/i
+  },
+  { 
+    keywords: /carteira|wallet/i, 
+    spuPatterns: /v10|cart|wallet|carteira/i 
+  },
+  { 
+    keywords: /cinto|belt/i, 
+    spuPatterns: /cart|c10|cinto|belt/i 
+  },
+  { 
+    keywords: /fone|headphone|bluetooth|airpod/i, 
+    spuPatterns: /fone|bt|bluetooth/i 
+  },
+  { 
+    keywords: /meia|meias|sock/i, 
+    spuPatterns: /meia|sock/i 
+  }
 ]
 
 // 4. Encontrar melhor produto no armazém para um componente do kit
@@ -132,9 +163,16 @@ function findBestProductForComponent(
   // Tentar busca por categorias e sinônimos conhecidos
   for (const alias of CATEGORY_ALIASES) {
     if (alias.keywords.test(componentName)) {
-      const matchByPattern = warehouseProducts.find(p =>
-        alias.spuPatterns.test(p.spu) || alias.keywords.test(p.product_name || '')
-      )
+      if (alias.excludeKeywords && alias.excludeKeywords.test(componentName)) {
+        continue
+      }
+      const matchByPattern = warehouseProducts.find(p => {
+        const prodName = p.product_name || ''
+        if (alias.excludeKeywords && (alias.excludeKeywords.test(p.spu) || alias.excludeKeywords.test(prodName))) {
+          return false
+        }
+        return alias.spuPatterns.test(p.spu) || alias.keywords.test(prodName)
+      })
       if (matchByPattern) return matchByPattern
     }
   }

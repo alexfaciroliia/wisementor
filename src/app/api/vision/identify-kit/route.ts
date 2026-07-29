@@ -97,9 +97,9 @@ ${titleContext}
 
 INSTRUCOES CRUCIAIS:
 1. Examine TODA a imagem em busca de CADA um dos itens presentes (exemplo: sapato/tenis principal, cinto na parte superior, relogio digital/analogico ao lado, carteira de couro no canto inferior, fones de ouvido, etc).
-2. ATENCAO PARA RELOGIOS: Relogios digitais com pulseira preta/silicone e tela quadrada (mesmo que o mostrador LED exiba textos ou formatos de hora diferentes como '12:45' ou 'PM') correspondem ao produto Relogio (SPU V20). NAO OMITA O RELOGIO!
+2. ATENCAO CRUCIAL PARA RELOGIOS: Diferencie Relogio Digital (display LED quadrado com numeros digitais, pulseira de silicone, SPU V20) de Relogio Analogico (mostrador redondo tradicional com ponteiros e numeros). Se a imagem contiver um Relogio Analogico e a lista do armazem NAO tiver um SPU especifico para relogio analogico, NAO retorne V20!
 3. Para CADA item visivel na imagem, encontre o SPU correspondente na lista de produtos do armazem acima.
-4. NAO omita nenhum acessorio! Se houver um relogio, identifique o SPU do relogio (V20). Se houver cinto, identifique o SPU do cinto. Se houver carteira, identifique o SPU da carteira. Se houver sapato/tenis, identifique o SPU do sapato/tenis.
+4. NAO omita nenhum acessorio! Se houver um relogio digital, identifique o SPU do relogio digital (V20). Se houver cinto, identifique o SPU do cinto. Se houver carteira, identifique o SPU da carteira. Se houver sapato/tenis, identifique o SPU do sapato/tenis.
 5. Responda SOMENTE com os SPUs identificados, separados por virgula. Exemplo: CART, V10, V20, FN-6012
 
 RESPOSTA:`
