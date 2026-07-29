@@ -75,23 +75,30 @@ export function extractKitComponents(title: string): string[] {
   return components
 }
 
-// 3. Score de similaridade entre dois textos (0 a 1)
+// 3. Score de similaridade de texto para nomes de produtos e componentes
 function similarityScore(a: string, b: string): number {
+  if (!a || !b) return 0
+
   const normA = normalizeForMatch(a)
   const normB = normalizeForMatch(b)
 
   // DISTINÇÃO CRUCIAL: Relógio Analógico NÃO PODE ser igualado a Relógio Digital!
-  const isAAnalog = /analogico|analógico/i.test(normA)
-  const isADigital = /digital/i.test(normA)
-  const isBAnalog = /analogico|analógico/i.test(normB)
-  const isBDigital = /digital/i.test(normB)
+  const isAAnalog = /analogico|analógico|ponteiro/i.test(normA)
+  const isADigital = /digital|smartband|\bled\b/i.test(normA)
+  const isBAnalog = /analogico|analógico|ponteiro/i.test(normB)
+  const isBDigital = /digital|smartband|\bled\b/i.test(normB)
 
   if ((isAAnalog && isBDigital) || (isADigital && isBAnalog)) {
     return 0 // Impossibilita associação cruzada entre relógio analógico e digital
   }
 
   if (normA === normB) return 1.0
-  if (normA.includes(normB) || normB.includes(normA)) return 0.85
+  if (normA.includes(normB) || normB.includes(normA)) {
+    if ((isBAnalog || isBDigital) && !(isAAnalog || isADigital)) {
+      return 0.4 // Reduz score se um produto é específico (Analógico/Digital) e o componente é genérico
+    }
+    return 0.85
+  }
 
   const wordsA = normA.split(/\s+/).filter(w => w.length >= 2)
   const wordsB = normB.split(/\s+/).filter(w => w.length >= 2)
@@ -104,7 +111,13 @@ function similarityScore(a: string, b: string): number {
 
   const recall = matches / wordsA.length
   const precision = matches / wordsB.length
-  return (recall + precision) / 2
+  const baseScore = (recall + precision) / 2
+
+  if ((isBAnalog || isBDigital) && !(isAAnalog || isADigital)) {
+    return baseScore * 0.5
+  }
+
+  return baseScore
 }
 
 import { ClientCategoryRule } from '@/lib/services/product_service'
@@ -113,14 +126,29 @@ import { ClientCategoryRule } from '@/lib/services/product_service'
 function findBestProductForComponent(
   componentName: string,
   warehouseProducts: WarehouseProductItem[],
-  categoryRules: ClientCategoryRule[] = []
+  categoryRules: ClientCategoryRule[] = [],
+  knownUnmappedCategories: string[] = []
 ): WarehouseProductItem | null {
   if (!componentName || warehouseProducts.length === 0) return null
+
+  const normComponent = componentName.toLowerCase()
+
+  const isDigitalWatchUnmapped = knownUnmappedCategories.some(u => /digital|smartband|led/i.test(u))
+  const isAnalogWatchUnmapped = knownUnmappedCategories.some(u => /analogic|analógic|ponteiro/i.test(u))
 
   let bestScore = 0
   let bestProduct: WarehouseProductItem | null = null
 
   for (const product of warehouseProducts) {
+    const pName = (product.product_name || '').toLowerCase()
+    const pSpu = product.spu.toLowerCase()
+
+    const isProdAnalog = /analogic|analógic|ponteiro/i.test(pName) || /analogic|analógic|ponteiro/i.test(pSpu)
+    const isProdDigital = /digital|smartband|led/i.test(pName) || /digital|smartband|led/i.test(pSpu)
+
+    if (isDigitalWatchUnmapped && isProdAnalog) continue
+    if (isAnalogWatchUnmapped && isProdDigital) continue
+
     const nameScore = similarityScore(componentName, product.product_name || '')
     const spuScore = similarityScore(componentName, product.spu)
     const score = Math.max(nameScore, spuScore)
@@ -131,11 +159,9 @@ function findBestProductForComponent(
     }
   }
 
-  if (bestScore >= 0.25) return bestProduct
+  if (bestScore >= 0.35) return bestProduct
 
   // Tentar busca através das Regras & Sinônimos de Categorias do Cliente
-  const normComponent = componentName.toLowerCase()
-
   for (const rule of categoryRules) {
     const matchesKeyword = rule.keywords.some(kw => normComponent.includes(kw.toLowerCase()))
     if (matchesKeyword) {
@@ -145,6 +171,12 @@ function findBestProductForComponent(
       const matched = warehouseProducts.find(p => {
         const pSpu = p.spu.toUpperCase()
         const pName = (p.product_name || '').toLowerCase()
+
+        const isProdAnalog = /analogic|analógic|ponteiro/i.test(pName) || /analogic|analógic|ponteiro/i.test(pSpu)
+        const isProdDigital = /digital|smartband|led/i.test(pName) || /digital|smartband|led/i.test(pSpu)
+
+        if (isDigitalWatchUnmapped && isProdAnalog) return false
+        if (isAnalogWatchUnmapped && isProdDigital) return false
 
         const spuMatch = rule.spu_patterns?.some(pat => pSpu.includes(pat.toUpperCase()))
         const nameMatch = pName.includes(rule.category_name.toLowerCase()) || rule.keywords.some(kw => pName.includes(kw.toLowerCase()))
@@ -380,7 +412,7 @@ export type VisionIdentifyFn = (
   imageUrl: string,
   products: WarehouseProductItem[],
   titleHint?: string
-) => Promise<string[]>
+) => Promise<string[] | { identifiedSpus: string[]; unmappedItems?: string[] }>
 
 export interface VisionProcessingLog {
   listingId: string
@@ -470,6 +502,7 @@ export async function processMarketplaceListingsWithVision(
     let fallbackUsed = false
     let fallbackReason = ''
     let visionConfidence = 'none'
+    const knownUnmapped: string[] = []
 
     // 1. Tentar identificar por Vision AI
     if (visionFn && imgUrl) {
@@ -479,7 +512,17 @@ export async function processMarketplaceListingsWithVision(
           visionUsed = true
           visionConfidence = 'cached'
         } else {
-          const identified = await visionFn(imgUrl, targetProducts, rawTitle)
+          const res = await visionFn(imgUrl, targetProducts, rawTitle)
+          let identified: string[] = []
+          if (Array.isArray(res)) {
+            identified = res
+          } else if (res && typeof res === 'object') {
+            identified = res.identifiedSpus || []
+            if (res.unmappedItems && res.unmappedItems.length > 0) {
+              knownUnmapped.push(...res.unmappedItems)
+            }
+          }
+
           imageVisionCache.set(imgUrl, identified)
           if (identified.length > 0) {
             componentSPUs = [...identified]
@@ -492,32 +535,52 @@ export async function processMarketplaceListingsWithVision(
       }
     }
 
-    // 2. CRICIAL: UNIFICAR com componentes extraídos do título (+)
-    const titleComponents = extractKitComponents(rawTitle)
     const localErrors: ErrorLogItem[] = []
 
+    // Registra erros para itens que a Visão AI identificou na foto mas que não possuem SPU no armazém
+    for (const unmapped of knownUnmapped) {
+      const errItem: ErrorLogItem = {
+        type: 'ERRO',
+        clientRow: firstRow.rowIdx,
+        productName: rawTitle,
+        field: 'Componente Não Localizado no Supabase',
+        originalValue: unmapped,
+        correctedValue: '-',
+        message: `Componente '${unmapped}' identificado no anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre a variação correta no armazém.`,
+        generatedFile: 'Kits',
+        upSellerLineRange: '-'
+      }
+      globalErrorLogs.push(errItem)
+      localErrors.push(errItem)
+    }
+
+    // 2. UNIFICAR com componentes extraídos do título (+), respeitando conhecidos não mapeados
+    const titleComponents = extractKitComponents(rawTitle)
+
     for (const compName of titleComponents) {
-      const found = findBestProductForComponent(compName, targetProducts, categoryRules)
+      const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
       if (found) {
         const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
         if (!componentSPUs.includes(cleanSpu)) {
           componentSPUs.push(cleanSpu)
         }
       } else {
-        // EXPLICITAMENTE APONTAR NA CENTRAL DE ERROS SE O COMPONENTE NÃO FOR LOCALIZADO NO SUPABASE!
-        const unmappedItem: ErrorLogItem = {
-          type: 'ERRO',
-          clientRow: firstRow.rowIdx,
-          productName: rawTitle,
-          field: 'Componente Não Localizado no Supabase',
-          originalValue: compName,
-          correctedValue: '-',
-          message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
-          generatedFile: 'Kits',
-          upSellerLineRange: '-'
+        const alreadyLogged = localErrors.some(e => e.originalValue === compName || e.message.includes(compName))
+        if (!alreadyLogged) {
+          const unmappedItem: ErrorLogItem = {
+            type: 'ERRO',
+            clientRow: firstRow.rowIdx,
+            productName: rawTitle,
+            field: 'Componente Não Localizado no Supabase',
+            originalValue: compName,
+            correctedValue: '-',
+            message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
+            generatedFile: 'Kits',
+            upSellerLineRange: '-'
+          }
+          globalErrorLogs.push(unmappedItem)
+          localErrors.push(unmappedItem)
         }
-        globalErrorLogs.push(unmappedItem)
-        localErrors.push(unmappedItem)
       }
     }
 

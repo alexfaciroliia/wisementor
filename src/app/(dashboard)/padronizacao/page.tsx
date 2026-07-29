@@ -146,18 +146,21 @@ export default function PadronizacaoPage() {
 
       // 4. Executar Motor de Padronização com Vision AI como critério primário
       // Função Vision que chama a API /api/vision/identify-kit
-      const visionFn = async (imageUrl: string, products: WarehouseProductItem[], titleHint?: string): Promise<string[]> => {
+      const visionFn = async (imageUrl: string, products: WarehouseProductItem[], titleHint?: string) => {
         try {
           const res = await fetch('/api/vision/identify-kit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageUrl, warehouseProducts: products, titleHint })
           })
-          if (!res.ok) return []
+          if (!res.ok) return { identifiedSpus: [] }
           const data = await res.json()
-          return data.identifiedSpus || []
+          return {
+            identifiedSpus: data.identifiedSpus || [],
+            unmappedItems: data.unmappedItems || []
+          }
         } catch {
-          return []
+          return { identifiedSpus: [] }
         }
       }
 

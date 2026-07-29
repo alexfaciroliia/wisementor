@@ -16,6 +16,7 @@ export interface VisionIdentifyRequest {
 
 export interface VisionIdentifyResponse {
   identifiedSpus: string[]
+  unmappedItems?: string[]
   confidence: 'high' | 'medium' | 'low'
   reasoning: string
   error?: string
@@ -97,10 +98,10 @@ ${titleContext}
 
 INSTRUCOES CRUCIAIS:
 1. Examine TODA a imagem em busca de CADA um dos itens presentes (exemplo: sapatos, tenis, cintos, carteiras, relogios digitais, relogios analogicos, fones de ouvido, etc).
-2. ATENCAO PARA RELOGIOS: Diferencie Relogio Digital (display LED quadrado com numeros digitais) de Relogio Analogico (mostrador redondo tradicional com ponteiros fisicos). Se a foto contiver um Relogio Analogico e a lista do armazem NAO tiver um SPU especifico para relogio analogico, NAO vincule a um SPU de relogio digital!
+2. ATENCAO ABSOLUTA PARA RELOGIOS: Diferencie Relogio Digital (display LED/silicone/smartband) de Relogio Analogico (mostrador redondo tradicional com ponteiros). Se a foto tiver um Relogio Digital e o armazem SO TIVER Relogio Analogico (ex: R40 / RELOGIO ANALOGICO), NAO retorne esse SPU! Em vez disso, escreva "UNMAPPED_DIGITAL_WATCH".
 3. Para CADA item visivel na imagem, encontre o SPU correspondente na lista de produtos do armazem acima.
 4. NAO omita nenhum acessorio ou item visivel! Identifique o SPU exato da lista de produtos acima para cada componente do kit.
-5. Responda SOMENTE com os SPUs identificados da lista do armazem, separados por virgula. Exemplo de formato: SPU1, SPU2, SPU3
+5. Responda SOMENTE com os SPUs identificados da lista do armazem, separados por virgula. Exemplo de formato: SPU1, SPU2
 
 RESPOSTA:`
 
@@ -121,6 +122,8 @@ RESPOSTA:`
 
     // Parsear SPUs reconhecidos da resposta
     const mentionedSpus: string[] = []
+    const unmappedItems: string[] = []
+
     const rawTokens = rawText
       .replace(/["'`]/g, '')
       .split(/[,\n;]+/)
@@ -128,15 +131,36 @@ RESPOSTA:`
       .filter((t: string) => t.length > 0)
 
     for (const token of rawTokens) {
+      const normToken = token.toUpperCase()
+      if (normToken.includes('UNMAPPED') || normToken.includes('DIGITAL_WATCH') || normToken.includes('RELOGIO_DIGITAL')) {
+        unmappedItems.push('Relógio Digital')
+        continue
+      }
+      if (normToken.includes('ANALOG_WATCH') || normToken.includes('RELOGIO_ANALOGICO')) {
+        unmappedItems.push('Relógio Analógico')
+        continue
+      }
+
       const matched = warehouseProducts.find(p => {
-        const normToken = token.toUpperCase().replace(/\s+/g, ' ')
-        const normSpu = p.spu.toUpperCase().replace(/\s+/g, ' ')
-        const normName = (p.product_name || '').toUpperCase().replace(/\s+/g, ' ')
-        return normSpu === normToken ||
-               normSpu.includes(normToken) ||
-               normToken.includes(normSpu) ||
-               (normName && normName.includes(normToken))
+        const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, ' ')
+        const pNormName = (p.product_name || '').toUpperCase().replace(/\s+/g, ' ')
+        
+        // Bloquear conflito entre Digital e Analógico
+        const tokenIsDigital = /DIGITAL|SMARTBAND|LED/.test(normToken)
+        const tokenIsAnalog = /ANALOGIC|ANALÓGIC|PONTEIRO/.test(normToken)
+        const prodIsDigital = /DIGITAL|SMARTBAND|LED/.test(pNormName) || /DIGITAL|SMARTBAND|LED/.test(pNormSpu)
+        const prodIsAnalog = /ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormName) || /ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormSpu)
+
+        if ((tokenIsDigital && prodIsAnalog) || (tokenIsAnalog && prodIsDigital)) {
+          return false
+        }
+
+        return pNormSpu === normToken ||
+               pNormSpu === normToken.replace(/\s+/g, '-') ||
+               pNormSpu.includes(normToken) ||
+               normToken.includes(pNormSpu)
       })
+
       if (matched && !mentionedSpus.includes(matched.spu)) {
         mentionedSpus.push(matched.spu)
       }
@@ -148,6 +172,7 @@ RESPOSTA:`
 
     return NextResponse.json({
       identifiedSpus: mentionedSpus,
+      unmappedItems: unmappedItems.length > 0 ? unmappedItems : undefined,
       confidence,
       reasoning: rawText.slice(0, 300)
     } as VisionIdentifyResponse)
