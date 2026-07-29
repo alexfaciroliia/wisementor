@@ -97,11 +97,22 @@ function similarityScore(a: string, b: string): number {
   return (recall + precision) / 2
 }
 
+// Tabela de sinônimos e padrões de categorias para busca tolerante de produtos no armazém
+const CATEGORY_ALIASES: Array<{ keywords: RegExp; spuPatterns: RegExp }> = [
+  { keywords: /relogio|relógio|watch|digital|analogico|analógico/i, spuPatterns: /v20|rel|watch|relogio/i },
+  { keywords: /carteira|wallet/i, spuPatterns: /v10|cart|wallet|carteira/i },
+  { keywords: /cinto|belt/i, spuPatterns: /cart|c10|cinto|belt/i },
+  { keywords: /fone|headphone|bluetooth|airpod/i, spuPatterns: /fone|bt|bluetooth/i },
+  { keywords: /meia|meias|sock/i, spuPatterns: /meia|sock/i }
+]
+
 // 4. Encontrar melhor produto no armazém para um componente do kit
 function findBestProductForComponent(
   componentName: string,
   warehouseProducts: WarehouseProductItem[]
 ): WarehouseProductItem | null {
+  if (!componentName || warehouseProducts.length === 0) return null
+
   let bestScore = 0
   let bestProduct: WarehouseProductItem | null = null
 
@@ -116,7 +127,19 @@ function findBestProductForComponent(
     }
   }
 
-  return bestScore >= 0.25 ? bestProduct : null
+  if (bestScore >= 0.25) return bestProduct
+
+  // Tentar busca por categorias e sinônimos conhecidos
+  for (const alias of CATEGORY_ALIASES) {
+    if (alias.keywords.test(componentName)) {
+      const matchByPattern = warehouseProducts.find(p =>
+        alias.spuPatterns.test(p.spu) || alias.keywords.test(p.product_name || '')
+      )
+      if (matchByPattern) return matchByPattern
+    }
+  }
+
+  return null
 }
 
 // 5. Ordenar SPUs do Kit: Acessórios em Ordem Alfabética PRIMEIRO, Produto Principal por ÚLTIMO
@@ -265,6 +288,18 @@ export function processMarketplaceListings(
       if (found) {
         const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
         if (!componentSPUs.includes(cleanSpu)) componentSPUs.push(cleanSpu)
+      } else {
+        globalErrorLogs.push({
+          type: 'ERRO',
+          clientRow: firstRow.rowIdx,
+          productName: rawTitle,
+          field: 'Componente Não Localizado no Supabase',
+          originalValue: componentName,
+          correctedValue: '-',
+          message: `Componente '${componentName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase (ex: SPU V20 para Relógio Digital). Cadastre o produto no armazém.`,
+          generatedFile: 'Kits',
+          upSellerLineRange: '-'
+        })
       }
     }
 
@@ -429,8 +464,9 @@ export async function processMarketplaceListingsWithVision(
     }
 
     // 2. CRICIAL: UNIFICAR com componentes extraídos do título (+)
-    // Isso garante que se a foto omitiu um acessório (como V20 relógio), o título complementa!
     const titleComponents = extractKitComponents(rawTitle)
+    const localErrors: ErrorLogItem[] = []
+
     for (const compName of titleComponents) {
       const found = findBestProductForComponent(compName, targetProducts)
       if (found) {
@@ -438,6 +474,21 @@ export async function processMarketplaceListingsWithVision(
         if (!componentSPUs.includes(cleanSpu)) {
           componentSPUs.push(cleanSpu)
         }
+      } else {
+        // EXPLICITAMENTE APONTAR NA CENTRAL DE ERROS SE O COMPONENTE NÃO FOR LOCALIZADO NO SUPABASE!
+        const unmappedItem: ErrorLogItem = {
+          type: 'ERRO',
+          clientRow: firstRow.rowIdx,
+          productName: rawTitle,
+          field: 'Componente Não Localizado no Supabase',
+          originalValue: compName,
+          correctedValue: '-',
+          message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase (ex: SPU V20 para Relógio Digital). Identifique e cadastre o produto no armazém.`,
+          generatedFile: 'Kits',
+          upSellerLineRange: '-'
+        }
+        globalErrorLogs.push(unmappedItem)
+        localErrors.push(unmappedItem)
       }
     }
 
@@ -457,13 +508,14 @@ export async function processMarketplaceListingsWithVision(
     })
 
     if (componentSPUs.length === 0) {
-      const localErrors: ErrorLogItem[] = [{
+      const emptyError: ErrorLogItem = {
         type: 'AVISO', clientRow: firstRow.rowIdx, productName: rawTitle,
         field: 'Componentes do Kit', originalValue: imgUrl || rawTitle, correctedValue: '-',
-        message: `Nenhum produto identificado pelo Vision AI nem pelo título. Cadastre os produtos no armazém Supabase.`,
+        message: `Nenhum produto do kit foi encontrado no armazém Supabase. Cadastre os produtos no armazém.`,
         generatedFile: 'Kits', upSellerLineRange: '-'
-      }]
-      localErrors.forEach(e => globalErrorLogs.push(e))
+      }
+      globalErrorLogs.push(emptyError)
+      localErrors.push(emptyError)
       allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'blocked_error', detectedType: 'kit', generatedKitRows: [], errorLogs: localErrors })
       continue
     }
@@ -500,10 +552,8 @@ export async function processMarketplaceListingsWithVision(
       }
     }
 
-    allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: [] })
+    allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: localErrors })
   }
 
   return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs }
 }
-
-
