@@ -16,13 +16,16 @@ export default function PadronizacaoPage() {
   const [file, setFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [resultData, setResultData] = useState<ParseMarketplaceResult | null>(null)
-  const [debugInfo, setDebugInfo] = useState<string | null>(null)
-  const [showDebug, setShowDebug] = useState(false)
   
   const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors' | 'vision'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
   const [visionProgress, setVisionProgress] = useState<{ current: number; total: number; listingId: string } | null>(null)
   const [visionLogs, setVisionLogs] = useState<VisionProcessingLog[]>([])
+
+  // Busca e visualização de imagem (popup hover e modal click)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [hoveredImg, setHoveredImg] = useState<{ url: string; x: number; y: number } | null>(null)
+  const [modalImg, setModalImg] = useState<string | null>(null)
 
   // Processar padronização de SKUs e formação de kits (Prompt 2)
   async function handleProcessMarketplaceSheet() {
@@ -96,31 +99,7 @@ export default function PadronizacaoPage() {
       if (colVariant1Name === -1) colVariant1Name = 31
       if (colVariant1Val === -1)  colVariant1Val = 32
       if (colVariant2Name === -1) colVariant2Name = 33
-      if (colVariant2Val === -1)  colVariant2Val = 34
       if (colImg === -1)         colImg = 41
-
-      // Gerar relatório de diagnóstico
-      const diagLines = [
-        `📋 Planilha: ${firstSheetName}`,
-        `📟 Total de linhas: ${rawRows.length - 1} (excl. cabeçalho)`,
-        `🏷️ Coluna ID: [${colId}] = ${headers[colId] || '?'}`,
-        `📝 Coluna Título: [${colTitle}] = ${headers[colTitle] || '?'}`,
-        `🎨 Coluna Cor (Variante1 Valor): [${colVariant1Val}] = ${headers[colVariant1Val] || '?'}`,
-        `📐 Coluna Tamanho (Variante2 Valor): [${colVariant2Val}] = ${headers[colVariant2Val] || '?'}`,
-        `🖼️ Coluna Imagem: [${colImg}] = ${headers[colImg] || '?'}`,
-        ``,
-        `📊 PRIMEIRAS 5 LINHAS DE DADOS:`,
-        ...rawRows.slice(1, 6).map((row, idx) => {
-          const id = row[colId] ?? '—'
-          const title = String(row[colTitle] ?? '').slice(0, 60)
-          const v1n = row[colVariant1Name] ?? ''
-          const v1v = row[colVariant1Val] ?? ''
-          const v2n = row[colVariant2Name] ?? ''
-          const v2v = row[colVariant2Val] ?? ''
-          return `  Linha ${idx+2}: ID=[${id}] | T=[${title}] | ${v1n}=[${v1v}] | ${v2n}=[${v2v}]`
-        })
-      ]
-      setDebugInfo(diagLines.join('\n'))
 
       const marketplaceRows: MarketplaceListingRow[] = []
 
@@ -201,7 +180,6 @@ export default function PadronizacaoPage() {
         type: 'success',
         text: `Processamento concluído! ${res.allListings.filter(l => l.detectedType === 'kit').length} anúncios de Kit identificados → ${res.kitsRows.length} linhas geradas. ${res.allListings.filter(l => l.listingStatus === 'standardized' && l.detectedType === 'simple').length} simples | ${conjuntosList.length} Pendentes/Conjuntos.`
       })
-      setShowDebug(false)
 
     } catch (err: any) {
       console.error('Erro no processamento de anúncios:', err)
@@ -470,22 +448,59 @@ export default function PadronizacaoPage() {
             </button>
           </div>
 
-          {/* Painel de Diagnóstico Debug */}
-          {debugInfo && (
-            <div style={{ marginBottom: '1.5rem' }}>
-              <button
-                onClick={() => setShowDebug(!showDebug)}
-                style={{ padding: '0.4rem 1rem', borderRadius: '6px', background: '#1e293b', border: '1px solid #334155', color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem', marginBottom: '0.5rem' }}
-              >
-                {showDebug ? '🔽 Ocultar' : '🔍 Ver'} Diagnóstico da Planilha Importada
-              </button>
-              {showDebug && (
-                <pre style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: '8px', padding: '1rem', fontSize: '0.75rem', color: '#8b949e', whiteSpace: 'pre-wrap', maxHeight: '300px', overflowY: 'auto' }}>
-                  {debugInfo}
-                </pre>
+          {/* Campo de Busca em qualquer parte das colunas */}
+          <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: '550px' }}>
+              <input
+                type="text"
+                placeholder="🔍 Localizar qualquer termo (ID Anúncio, Kit SKU, Título, SKU Armazém...)"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 2.2rem 0.75rem 2.5rem',
+                  borderRadius: '8px',
+                  background: '#1a1e2e',
+                  border: '1px solid #3b82f6',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+              />
+              <span style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: '#60a5fa' }}>🔍</span>
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  style={{
+                    position: 'absolute',
+                    right: '0.65rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: '#334155',
+                    border: 'none',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '20px',
+                    height: '20px',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Limpar busca"
+                >
+                  ✕
+                </button>
               )}
             </div>
-          )}
+            {searchTerm && (
+              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                Filtrando resultados por: <strong style={{ color: '#38bdf8' }}>"{searchTerm}"</strong>
+              </span>
+            )}
+          </div>
 
           {/* Conteúdo Aba Kits */}
           {activeTab === 'kits' && (
@@ -507,6 +522,11 @@ export default function PadronizacaoPage() {
                     .flatMap(listing =>
                       listing.generatedKitRows.map((r, idx) => ({ ...r, listingId: listing.listingId, idx }))
                     )
+                    .filter(r => {
+                      if (!searchTerm.trim()) return true
+                      const norm = searchTerm.trim().toLowerCase()
+                      return [r.listingId, r.kitSku, r.title, r.sku, r.skuQty].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                    })
                     .map((r, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
                       <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{r.listingId}</td>
@@ -516,7 +536,16 @@ export default function PadronizacaoPage() {
                       <td style={{ padding: '0.65rem 1rem', textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>{r.skuQty}</td>
                       <td style={{ padding: '0.65rem 1rem' }}>
                         {r.imageUrl ? (
-                          <a href={r.imageUrl} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Ver Imagem</a>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); setModalImg(r.imageUrl); }}
+                            onMouseEnter={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                            onMouseMove={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                            onMouseLeave={() => setHoveredImg(null)}
+                            style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                          >
+                            Ver Imagem
+                          </button>
                         ) : '-'}
                       </td>
                     </tr>
@@ -539,7 +568,13 @@ export default function PadronizacaoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {conjuntosList.map((item, idx) => (
+                  {conjuntosList
+                    .filter(item => {
+                      if (!searchTerm.trim()) return true
+                      const norm = searchTerm.trim().toLowerCase()
+                      return [item.listingId, item.title].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                    })
+                    .map((item, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
                       <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace' }}>{item.listingId}</td>
                       <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{item.title}</td>
@@ -571,7 +606,13 @@ export default function PadronizacaoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {errorLogsList.map((e, idx) => (
+                  {errorLogsList
+                    .filter(e => {
+                      if (!searchTerm.trim()) return true
+                      const norm = searchTerm.trim().toLowerCase()
+                      return [e.type, e.clientRow, e.productName, e.field, e.originalValue, e.correctedValue, e.message].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                    })
+                    .map((e, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
                       <td style={{ padding: '0.65rem 1rem' }}>
                         <span style={{
@@ -611,7 +652,13 @@ export default function PadronizacaoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visionLogs.map((v, idx) => (
+                  {visionLogs
+                    .filter(v => {
+                      if (!searchTerm.trim()) return true
+                      const norm = searchTerm.trim().toLowerCase()
+                      return [v.listingId, v.title, v.visionSpus.join(' '), v.visionConfidence, v.fallbackReason].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                    })
+                    .map((v, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
                       <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{v.listingId}</td>
                       <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{v.title}</td>
@@ -631,7 +678,16 @@ export default function PadronizacaoPage() {
                       </td>
                       <td style={{ padding: '0.65rem 1rem' }}>
                         {v.imageUrl ? (
-                          <a href={v.imageUrl} target="_blank" rel="noreferrer" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Ver Foto</a>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); setModalImg(v.imageUrl); }}
+                            onMouseEnter={(e) => setHoveredImg({ url: v.imageUrl, x: e.clientX, y: e.clientY })}
+                            onMouseMove={(e) => setHoveredImg({ url: v.imageUrl, x: e.clientX, y: e.clientY })}
+                            onMouseLeave={() => setHoveredImg(null)}
+                            style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                          >
+                            Ver Foto
+                          </button>
                         ) : '-'}
                       </td>
                     </tr>
@@ -642,6 +698,125 @@ export default function PadronizacaoPage() {
           )}
         </>
       )}
+
+      {/* Popover flutuante no Hover */}
+      {hoveredImg && !modalImg && (
+        <div style={{
+          position: 'fixed',
+          left: Math.min(hoveredImg.x + 15, typeof window !== 'undefined' ? window.innerWidth - 270 : 800),
+          top: Math.max(10, Math.min(hoveredImg.y - 120, typeof window !== 'undefined' ? window.innerHeight - 270 : 600)),
+          zIndex: 99999,
+          pointerEvents: 'none',
+          background: '#0f172a',
+          border: '2px solid #3b82f6',
+          borderRadius: '12px',
+          padding: '0.5rem',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 10px 10px -5px rgba(0, 0, 0, 0.6)'
+        }}>
+          <img
+            src={hoveredImg.url}
+            alt="Preview"
+            style={{ width: '230px', height: '230px', objectFit: 'contain', borderRadius: '8px', background: '#fff' }}
+          />
+          <div style={{ fontSize: '0.7rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.25rem' }}>
+            Clique para ampliar
+          </div>
+        </div>
+      )}
+
+      {/* Modal Popup ao Clicar */}
+      {modalImg && (
+        <div
+          onClick={() => setModalImg(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.5rem'
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              background: '#1e293b',
+              border: '1px solid #334155',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setModalImg(null)}
+              style={{
+                position: 'absolute',
+                top: '0.75rem',
+                right: '0.75rem',
+                background: '#334155',
+                border: 'none',
+                color: '#fff',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="Fechar"
+            >
+              ✕
+            </button>
+
+            <img
+              src={modalImg}
+              alt="Visualização da Foto"
+              style={{
+                maxWidth: '80vw',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                borderRadius: '10px',
+                background: '#fff',
+                padding: '0.5rem'
+              }}
+            />
+
+            <div style={{ display: 'flex', gap: '1rem', width: '100%', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => setModalImg(null)}
+                style={{
+                  padding: '0.6rem 1.5rem',
+                  borderRadius: '8px',
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Fechar Visualização
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+
