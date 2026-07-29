@@ -320,6 +320,7 @@ export function processMarketplaceListings(
 
     const kitComponents = extractKitComponents(rawTitle)
     const componentSPUs: string[] = []
+    const localErrors: ErrorLogItem[] = []
 
     for (const componentName of kitComponents) {
       const found = findBestProductForComponent(componentName, targetProducts)
@@ -327,22 +328,25 @@ export function processMarketplaceListings(
         const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
         if (!componentSPUs.includes(cleanSpu)) componentSPUs.push(cleanSpu)
       } else {
-        globalErrorLogs.push({
+        const errItem: ErrorLogItem = {
           type: 'ERRO',
           clientRow: firstRow.rowIdx,
           productName: rawTitle,
           field: 'Componente Não Localizado no Supabase',
           originalValue: componentName,
           correctedValue: '-',
-          message: `Componente '${componentName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase (ex: SPU V20 para Relógio Digital). Cadastre o produto no armazém.`,
+          message: `Componente '${componentName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Cadastre o produto no armazém.`,
           generatedFile: 'Kits',
           upSellerLineRange: '-'
-        })
+        }
+        globalErrorLogs.push(errItem)
+        localErrors.push(errItem)
       }
     }
 
-    if (componentSPUs.length === 0) {
-      allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'blocked_error', detectedType: 'kit', generatedKitRows: [], errorLogs: [] })
+    // REGRA SOLICITADA: Kits com ERROS (componentes não mapeados) NÃO constam na Formação dos Kits!
+    if (componentSPUs.length === 0 || localErrors.some(e => e.type === 'ERRO')) {
+      allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'blocked_error', detectedType: 'kit', generatedKitRows: [], errorLogs: localErrors })
       continue
     }
 
@@ -545,15 +549,19 @@ export async function processMarketplaceListingsWithVision(
       fallbackReason: fallbackUsed ? fallbackReason : undefined
     })
 
-    if (componentSPUs.length === 0) {
-      const emptyError: ErrorLogItem = {
-        type: 'AVISO', clientRow: firstRow.rowIdx, productName: rawTitle,
-        field: 'Componentes do Kit', originalValue: imgUrl || rawTitle, correctedValue: '-',
-        message: `Nenhum produto do kit foi encontrado no armazém Supabase. Cadastre os produtos no armazém.`,
-        generatedFile: 'Kits', upSellerLineRange: '-'
+    const hasError = localErrors.some(e => e.type === 'ERRO')
+
+    if (componentSPUs.length === 0 || hasError) {
+      if (componentSPUs.length === 0 && !hasError) {
+        const emptyError: ErrorLogItem = {
+          type: 'AVISO', clientRow: firstRow.rowIdx, productName: rawTitle,
+          field: 'Componentes do Kit', originalValue: imgUrl || rawTitle, correctedValue: '-',
+          message: `Nenhum produto do kit foi encontrado no armazém Supabase. Cadastre os produtos no armazém.`,
+          generatedFile: 'Kits', upSellerLineRange: '-'
+        }
+        globalErrorLogs.push(emptyError)
+        localErrors.push(emptyError)
       }
-      globalErrorLogs.push(emptyError)
-      localErrors.push(emptyError)
       allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'blocked_error', detectedType: 'kit', generatedKitRows: [], errorLogs: localErrors })
       continue
     }
