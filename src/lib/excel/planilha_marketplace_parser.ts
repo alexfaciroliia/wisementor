@@ -618,10 +618,13 @@ export async function processMarketplaceListingsWithVision(
           }
 
           imageVisionCache.set(imgUrl, { identified, unmapped })
+          // Marca visionUsed=true sempre que a chamada à Visão AI ocorreu com sucesso,
+          // independente de ter retornado SPUs ou só unmappedItems.
+          // Isso impede que o fallback por texto do título dispare e gere falsos ERROS.
+          visionUsed = true
+          visionConfidence = identified.length >= 2 ? 'high' : identified.length === 1 ? 'medium' : 'low'
           if (identified.length > 0) {
             componentSPUs = [...identified]
-            visionUsed = true
-            visionConfidence = identified.length >= 2 ? 'high' : 'medium'
           }
         }
       } catch (visionErr: any) {
@@ -651,11 +654,13 @@ export async function processMarketplaceListingsWithVision(
     }
 
     // 2. EXTRAÇÃO E VALIDAÇÃO DE COMPONENTES:
-    // Quando a Visão AI é utilizada, a identificação é 100% BASEADA EM FOTOS (Visão AI vs. Imagens de Referência do Supabase).
+    // Quando a Visão AI é utilizada, a identificação é 100% BASEADA EM FOTOS.
     // O título do anúncio é 100% descartado. Não fazemos nenhuma validação de texto por palavras do título.
+    // IMPORTANTE: Se a Visão AI foi chamada mas retornou 0 SPUs (falha de download de imagem ou IA incerta),
+    // tratamos como AVISO (sem kit formado), mas NÃO como ERRO bloqueante gerado pelo título.
     if (!visionUsed) {
       const titleComponents = extractKitComponents(rawTitle)
-      // Fallback: se a Visão AI NÃO foi utilizada, extraímos produtos a partir das palavras do título
+      // Fallback: se a Visão AI NÃO foi chamada, extraímos produtos a partir das palavras do título
       for (const compName of titleComponents) {
         const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
         if (found) {
