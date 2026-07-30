@@ -183,7 +183,8 @@ Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separado
 
       if (normToken.startsWith('UNMAPPED')) {
         const isNarrowSmartband = /NARROW|SMARTBAND|OVAL|CAPSULA|FINO/i.test(normToken)
-        const isDigitalWatchToken = /DIGITAL|WATCH|RELOGIO|LED|SMARTWATCH/i.test(normToken)
+        const isAnalogWatchToken = /ANALOG|PONTEIRO|R40/i.test(normToken)
+        const isDigitalWatchToken = !isAnalogWatchToken && /DIGITAL|WATCH|RELOGIO|LED|SMARTWATCH|V20/i.test(normToken)
 
         if (isNarrowSmartband) {
           const itemDesc = 'Relógio Digital Fino (Smartband Oval)'
@@ -193,18 +194,27 @@ Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separado
           continue
         }
 
-        // Se for um relógio digital genérico/quadrado e o armazém tiver um produto de relógio, associar a ele dinamicamente
+        if (isAnalogWatchToken) {
+          const analogWatchProd = warehouseProducts.find(p => {
+            const spuUpper = p.spu.toUpperCase()
+            const nameUpper = (p.product_name || '').toUpperCase()
+            return /R40|ANALOG|PONTEIRO/.test(spuUpper) || /ANALOG|PONTEIRO/.test(nameUpper)
+          })
+          if (analogWatchProd && !mentionedSpus.includes(analogWatchProd.spu)) {
+            mentionedSpus.push(analogWatchProd.spu)
+            continue
+          }
+        }
+
         if (isDigitalWatchToken) {
           const digitalWatchProd = warehouseProducts.find(p => {
             const spuUpper = p.spu.toUpperCase()
             const nameUpper = (p.product_name || '').toUpperCase()
-            return /RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(spuUpper) || /RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(nameUpper)
+            return /V20|DIGITAL|SMARTWATCH|LED/.test(spuUpper) || /DIGITAL|SMARTWATCH|LED/.test(nameUpper) || (!/R40|ANALOG|PONTEIRO/.test(spuUpper) && /RELOGIO|RELÓGIO/.test(spuUpper))
           })
 
-          if (digitalWatchProd) {
-            if (!mentionedSpus.includes(digitalWatchProd.spu)) {
-              mentionedSpus.push(digitalWatchProd.spu)
-            }
+          if (digitalWatchProd && !mentionedSpus.includes(digitalWatchProd.spu)) {
+            mentionedSpus.push(digitalWatchProd.spu)
             continue
           }
         }

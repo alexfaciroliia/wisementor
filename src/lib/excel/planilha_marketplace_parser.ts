@@ -169,10 +169,6 @@ function findBestProductForComponent(
     const spuScore = similarityScore(componentName, product.spu)
     let score = Math.max(nameScore, spuScore)
 
-    if (isWatchComp && (isProdDigital || pName.includes('reló') || pSpu.includes('v20'))) {
-      score = Math.max(score, 0.85)
-    }
-
     if (score > bestScore) {
       bestScore = score
       bestProduct = product
