@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem, UnreconciledListingItem, orderKitSpus } from '@/lib/excel/planilha_marketplace_parser'
+import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem, UnreconciledListingItem, orderKitSpus, findExactWarehouseSku, checkWarehouseColorSizeReconciliation } from '@/lib/excel/planilha_marketplace_parser'
 import { removeAccentsAndCedilla } from '@/lib/excel/planilha1_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
-import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules } from '@/lib/services/product_service'
+import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules, ClientCategoryRule } from '@/lib/services/product_service'
 import { useDashboard } from '@/app/(dashboard)/layout'
 
 export default function PadronizacaoPage() {
@@ -28,6 +28,8 @@ export default function PadronizacaoPage() {
   const [hoveredImg, setHoveredImg] = useState<{ url: string; x: number; y: number } | null>(null)
   const [modalImg, setModalImg] = useState<string | null>(null)
   const [selectedDePara, setSelectedDePara] = useState<{ [key: string]: string }>({})
+  const [currentWarehouseProducts, setCurrentWarehouseProducts] = useState<WarehouseProductItem[]>([])
+  const [currentCategoryRules, setCurrentCategoryRules] = useState<ClientCategoryRule[]>([])
 
   // Aplicar De-para para um anúncio da aba Ajustes e movê-lo para Formação dos Kits
   function handleApplyDePara(item: UnreconciledListingItem) {
@@ -37,15 +39,21 @@ export default function PadronizacaoPage() {
     const updatedRows: GeneratedKitRow[] = []
     const cleanTitle = item.title.replace(/\s+/g, ' ').trim()
 
-    // 1. Usar a lista completa de componentes do kit (ex: ["i12", "LC-400"])
+    // 1. Usar a lista completa de componentes do kit (ex: ["i12", "R40", "LC-400"]) e ordenar com regras reais do armazém
     const spus = item.componentSPUs && item.componentSPUs.length > 0 ? item.componentSPUs : [item.spu]
-    const spuPart = orderKitSpus(spus, [], [])
+    const spuPart = orderKitSpus(spus, currentWarehouseProducts, currentCategoryRules)
 
     for (const variationRow of item.rows) {
+      const rowCorRaw = (variationRow.colorRaw || '').trim()
       const rawTam = (variationRow.sizeRaw || 'U').trim()
       const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
 
-      const cleanCor = removeAccentsAndCedilla(chosenColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
+      // Verificar se a cor original desta linha (ex: PRETO ou AZUL MARINHO) já bate com o armazém.
+      // Apenas a cor não conciliada (ex: MARINHO) usará a cor escolhida no de-para.
+      const checkRes = checkWarehouseColorSizeReconciliation(item.spu, rowCorRaw, tam, currentWarehouseProducts)
+      const rowColor = checkRes.isReconciled && checkRes.matchedColor ? checkRes.matchedColor : chosenColor
+
+      const cleanCor = removeAccentsAndCedilla(rowColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
       const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
 
       let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
@@ -53,12 +61,9 @@ export default function PadronizacaoPage() {
 
       const imgForRow = (variationRow.imageUrl || item.imageUrl || '').trim()
 
-      // 2. Gerar uma linha para CADA componente SPU do kit (ex: i12 + LC-400-Cinza-38)
+      // 2. Gerar uma linha para CADA componente SPU do kit cruzando a cor correta da variação
       for (const compSpu of spus) {
-        const normComp = compSpu.toUpperCase()
-        const officialWarehouseSku = (normComp.includes('I12') || normComp.includes('FONE'))
-          ? compSpu
-          : `${compSpu}-${chosenColor.charAt(0).toUpperCase() + chosenColor.slice(1).toLowerCase()}-${tam}`
+        const officialWarehouseSku = findExactWarehouseSku(compSpu, rowColor, tam, currentWarehouseProducts)
 
         const kitRow: GeneratedKitRow = {
           kitSku,
@@ -122,6 +127,9 @@ export default function PadronizacaoPage() {
       // 2. Buscar produtos oficiais cadastrados no Supabase para o cliente e suas regras de categorias
       const warehouseProducts = await fetchWarehouseProducts(selectedClientId, targetSpu)
       const categoryRules = await getClientCategoryRules(selectedClientId, warehouseProducts)
+
+      setCurrentWarehouseProducts(warehouseProducts)
+      setCurrentCategoryRules(categoryRules)
 
       if (warehouseProducts.length === 0) {
         setMessage({
