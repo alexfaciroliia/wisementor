@@ -599,13 +599,17 @@ export async function processMarketplaceListingsWithVision(
       try {
         if (imageVisionCache.has(imgUrl)) {
           const cached = imageVisionCache.get(imgUrl)!
-          componentSPUs = [...cached.identified]
-          if (cached.unmapped && cached.unmapped.length > 0) {
-            knownUnmapped.push(...cached.unmapped)
+          if (cached.identified.length > 0 || (cached.unmapped && cached.unmapped.length > 0)) {
+            componentSPUs = [...cached.identified]
+            if (cached.unmapped && cached.unmapped.length > 0) {
+              knownUnmapped.push(...cached.unmapped)
+            }
+            visionUsed = true
+            visionConfidence = 'cached'
           }
-          visionUsed = true
-          visionConfidence = 'cached'
-        } else {
+        }
+        
+        if (!visionUsed) {
           const res = await visionFn(imgUrl, targetProducts, rawTitle)
           let identified: string[] = []
           let unmapped: string[] = []
@@ -619,8 +623,8 @@ export async function processMarketplaceListingsWithVision(
             }
           }
 
-          imageVisionCache.set(imgUrl, { identified, unmapped })
           if (identified.length > 0 || unmapped.length > 0) {
+            imageVisionCache.set(imgUrl, { identified, unmapped })
             visionUsed = true
             visionConfidence = identified.length >= 2 ? 'high' : identified.length === 1 ? 'medium' : 'low'
             if (identified.length > 0) {
