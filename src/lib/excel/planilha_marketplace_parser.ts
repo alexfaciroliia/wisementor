@@ -67,6 +67,7 @@ export function normalizeForMatch(str: string): string {
   if (!str) return ''
   let clean = removeAccentsAndCedilla(str).toLowerCase()
   clean = clean.replace(/ç/gi, 'c')
+  clean = clean.replace(/\brelogo\b/gi, 'relogio').replace(/\brelojo\b/gi, 'relogio')
   clean = clean.replace(/\s+/g, ' ').trim()
   return clean
 }
@@ -168,6 +169,15 @@ function findBestProductForComponent(
     const nameScore = similarityScore(componentName, product.product_name || '')
     const spuScore = similarityScore(componentName, product.spu)
     let score = Math.max(nameScore, spuScore)
+
+    // Se o componente pede especificamente Relógio Digital e o produto é digital/não-analógico:
+    if (isDigitalWatchComp && isProdDigital) {
+      score = Math.max(score, 0.85)
+    }
+    // Se o componente pede especificamente Relógio Analógico e o produto é analógico:
+    if (isAnalogWatchComp && isProdAnalog) {
+      score = Math.max(score, 0.85)
+    }
 
     if (score > bestScore) {
       bestScore = score
