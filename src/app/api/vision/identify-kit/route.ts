@@ -191,12 +191,12 @@ Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separado
           continue
         }
 
-        // Se for um relógio digital genérico/quadrado e o armazém tiver um produto de relógio (ex: V20), associar a ele
+        // Se for um relógio digital genérico/quadrado e o armazém tiver um produto de relógio, associar a ele dinamicamente
         if (isDigitalWatchToken) {
           const digitalWatchProd = warehouseProducts.find(p => {
             const spuUpper = p.spu.toUpperCase()
             const nameUpper = (p.product_name || '').toUpperCase()
-            return spuUpper === 'V20' || /V20|RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(spuUpper) || /RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(nameUpper)
+            return /RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(spuUpper) || /RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(nameUpper)
           })
 
           if (digitalWatchProd) {
