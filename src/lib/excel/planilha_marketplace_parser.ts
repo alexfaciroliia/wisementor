@@ -612,8 +612,19 @@ export async function processMarketplaceListingsWithVision(
           } else if (res && typeof res === 'object') {
             identified = res.identifiedSpus || []
             if (res.unmappedItems && res.unmappedItems.length > 0) {
-              unmapped = [...res.unmappedItems]
-              knownUnmapped.push(...res.unmappedItems)
+              for (const item of res.unmappedItems) {
+                const isNarrowSmartband = /fino|smartband|oval|capsula/i.test(item)
+                const matchedWarehouseProd = !isNarrowSmartband ? findBestProductForComponent(item, targetProducts, categoryRules) : null
+                if (matchedWarehouseProd) {
+                  const cleanSpu = sanitizeText(matchedWarehouseProd.spu).toUpperCase().replace(/\s+/g, '-')
+                  if (!identified.includes(cleanSpu)) {
+                    identified.push(cleanSpu)
+                  }
+                } else {
+                  unmapped.push(item)
+                  knownUnmapped.push(item)
+                }
+              }
             }
           }
 
