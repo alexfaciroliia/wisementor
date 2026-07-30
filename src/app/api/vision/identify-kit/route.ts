@@ -23,11 +23,13 @@ export interface VisionIdentifyResponse {
 }
 
 // Helper: baixar imagem e converter para base64 com timeout curto
-async function fetchImageBase64(url: string, timeoutMs = 8000): Promise<{ base64: string; mimeType: string } | null> {
+async function fetchImageBase64(url: string, timeoutMs = 12000): Promise<{ base64: string; mimeType: string } | null> {
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WiseMentor/1.0)' },
-      signal: AbortSignal.timeout(timeoutMs)
+    const cleanUrl = url.trim().replace(/^http:\/\//i, 'https://')
+    const res = await fetch(cleanUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: 'follow'
     })
     if (!res.ok) return null
 
