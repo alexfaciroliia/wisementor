@@ -45,9 +45,9 @@ export default function PadronizacaoPage() {
       const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
 
       const existingListing = resultData.allListings.find(l => l.listingId === item.listingId)
-      const spus = existingListing?.generatedKitRows.map(r => r.sku.split('-')[0]) || [item.spu]
-
-      const spuPart = spus.join('-')
+      const spusFromKitRows = existingListing?.generatedKitRows.map(r => r.sku.split('-')[0]).filter(Boolean) || []
+      const validSpus = Array.from(new Set(spusFromKitRows.length > 0 ? spusFromKitRows : [item.spu]))
+      const spuPart = validSpus.join('-')
       let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
       if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
 
