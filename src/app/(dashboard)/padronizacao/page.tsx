@@ -707,13 +707,14 @@ export default function PadronizacaoPage() {
                     <th style={{ padding: '0.75rem 1rem' }}>SPU Armazém</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Cor da Planilha Importada</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Cor no Armazém Supabase (De-para)</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Imagem Anúncio</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Ação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {!resultData?.unreconciledItems || resultData.unreconciledItems.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.95rem' }}>
+                      <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.95rem' }}>
                         🎉 Nenhum ajuste pendente! Todos os anúncios estão 100% conciliados com o armazém do Supabase.
                       </td>
                     </tr>
@@ -758,6 +759,20 @@ export default function PadronizacaoPage() {
                             ))}
                           </select>
                         </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          {item.imageUrl ? (
+                            <button
+                              type="button"
+                              onClick={(evt) => { evt.preventDefault(); setModalImg(item.imageUrl); }}
+                              onMouseEnter={(evt) => setHoveredImg({ url: item.imageUrl, x: evt.clientX, y: evt.clientY })}
+                              onMouseMove={(evt) => setHoveredImg({ url: item.imageUrl, x: evt.clientX, y: evt.clientY })}
+                              onMouseLeave={() => setHoveredImg(null)}
+                              style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                            >
+                              Ver Imagem
+                            </button>
+                          ) : '-'}
+                        </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                           <button
                             type="button"
@@ -797,6 +812,7 @@ export default function PadronizacaoPage() {
                     <th style={{ padding: '0.75rem 1rem' }}>Campo</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Original</th>
                     <th style={{ padding: '0.75rem 1rem' }}>Mensagem de Erro</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Imagem Anúncio</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -806,27 +822,44 @@ export default function PadronizacaoPage() {
                       const norm = searchTerm.trim().toLowerCase()
                       return [e.type, e.clientRow, e.productName, e.field, e.originalValue, e.correctedValue, e.message].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
                     })
-                    .map((e, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '0.65rem 1rem' }}>
-                        <span style={{
-                          padding: '0.2rem 0.5rem',
-                          borderRadius: '4px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: e.type === 'ERRO' ? '#7f1d1d' : '#064e3b',
-                          color: e.type === 'ERRO' ? '#fca5a5' : '#6ee7b7'
-                        }}>
-                          {e.type}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>{e.clientRow}</td>
-                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{e.productName}</td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#f87171' }}>{e.originalValue || '-'}</td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#cbd5e1' }}>{e.message}</td>
-                    </tr>
-                  ))}
+                    .map((e, idx) => {
+                      const imgUrl = e.imageUrl || (e.originalValue && e.originalValue.startsWith('http') ? e.originalValue : null)
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '0.65rem 1rem' }}>
+                            <span style={{
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: e.type === 'ERRO' ? '#7f1d1d' : '#064e3b',
+                              color: e.type === 'ERRO' ? '#fca5a5' : '#6ee7b7'
+                            }}>
+                              {e.type}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>{e.clientRow}</td>
+                          <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{e.productName}</td>
+                          <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
+                          <td style={{ padding: '0.65rem 1rem', color: '#f87171' }}>{e.originalValue || '-'}</td>
+                          <td style={{ padding: '0.65rem 1rem', color: '#cbd5e1' }}>{e.message}</td>
+                          <td style={{ padding: '0.65rem 1rem' }}>
+                            {imgUrl ? (
+                              <button
+                                type="button"
+                                onClick={(evt) => { evt.preventDefault(); setModalImg(imgUrl); }}
+                                onMouseEnter={(evt) => setHoveredImg({ url: imgUrl, x: evt.clientX, y: evt.clientY })}
+                                onMouseMove={(evt) => setHoveredImg({ url: imgUrl, x: evt.clientX, y: evt.clientY })}
+                                onMouseLeave={() => setHoveredImg(null)}
+                                style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                              >
+                                Ver Imagem
+                              </button>
+                            ) : '-'}
+                          </td>
+                        </tr>
+                      )
+                    })}
                 </tbody>
               </table>
             </div>

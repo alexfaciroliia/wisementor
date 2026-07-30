@@ -10,6 +10,7 @@ export interface ErrorLogItem {
   message: string
   generatedFile: 'Produtos Unicos' | 'Produtos Variantes' | 'Kits'
   upSellerLineRange: string
+  imageUrl?: string
 }
 
 export interface ParsedProductVariant {

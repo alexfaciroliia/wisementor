@@ -630,6 +630,7 @@ export async function processMarketplaceListingsWithVision(
     }
 
     const localErrors: ErrorLogItem[] = []
+    const currentImgUrl = (firstRow.imageUrl || '').trim()
 
     // Registra erros para itens que a Visão AI identificou na foto mas que não possuem SPU no armazém
     for (const unmapped of knownUnmapped) {
@@ -642,7 +643,8 @@ export async function processMarketplaceListingsWithVision(
         correctedValue: '-',
         message: `Componente '${unmapped}' identificado na imagem do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre a variação correta no armazém.`,
         generatedFile: 'Kits',
-        upSellerLineRange: '-'
+        upSellerLineRange: '-',
+        imageUrl: currentImgUrl
       }
       globalErrorLogs.push(errItem)
       localErrors.push(errItem)
@@ -675,7 +677,8 @@ export async function processMarketplaceListingsWithVision(
             correctedValue: '-',
             message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
             generatedFile: 'Kits',
-            upSellerLineRange: '-'
+            upSellerLineRange: '-',
+            imageUrl: currentImgUrl
           }
           globalErrorLogs.push(unmappedItem)
           localErrors.push(unmappedItem)
@@ -702,7 +705,8 @@ export async function processMarketplaceListingsWithVision(
               correctedValue: '-',
               message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
               generatedFile: 'Kits',
-              upSellerLineRange: '-'
+              upSellerLineRange: '-',
+              imageUrl: currentImgUrl
             }
             globalErrorLogs.push(unmappedItem)
             localErrors.push(unmappedItem)
@@ -731,7 +735,8 @@ export async function processMarketplaceListingsWithVision(
           type: 'AVISO', clientRow: firstRow.rowIdx, productName: rawTitle,
           field: 'Componentes do Kit', originalValue: imgUrl || rawTitle, correctedValue: '-',
           message: `Nenhum produto do kit foi encontrado no armazém Supabase. Cadastre os produtos no armazém.`,
-          generatedFile: 'Kits', upSellerLineRange: '-'
+          generatedFile: 'Kits', upSellerLineRange: '-',
+          imageUrl: currentImgUrl
         }
         globalErrorLogs.push(emptyError)
         localErrors.push(emptyError)
