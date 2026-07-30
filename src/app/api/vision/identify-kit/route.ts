@@ -97,14 +97,25 @@ LISTA DE PRODUTOS/SPUs DO ARMAZEM DO CLIENTE:
 ${productListText}
 ${titleContext}
 
-INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL:
-1. Examine a IMAGEM em busca de CADA um dos itens visualmente presentes (exemplo: modelo/formato de sapato/tenis, tipo de cinto, modelo de fone, relogio digital vs analogico, carteira).
-2. PRIORIDADE DA IMAGEM: A foto visual sobressai sobre o titulo. O titulo serve APENAS como apoio secundario.
-3. ATENCAO ABSOLUTA PARA RELOGIOS E ACESSORIOS:
-   - Se a foto mostrar um Relogio Digital (tela LED preta, numeros digitais, pulseira de silicone/smartband) e a lista do armazem NAO TIVER um SPU de Relogio Digital (exemplo: se a lista so tiver R40 / RELOGIO ANALOGICO com ponteiros), NAO RETORNE R40! Escreva "UNMAPPED_DIGITAL_WATCH".
-   - Se a foto mostrar qualquer item que NAO tem correspondente no armazem pelo formato/tipo/variacao fisica, escreva "UNMAPPED_[NOME_DO_ITEM]".
-4. Para cada produto da foto que possuir um correspondente exato no armazem, inclua o SPU da lista do armazem.
-5. Responda SOMENTE com os SPUs identificados da lista do armazem ou itens UNMAPPED, separados por virgula. Exemplo de formato: SPU1, SPU2, UNMAPPED_DIGITAL_WATCH
+INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL DE RELOGIOS E ACESSORIOS:
+Existem 3 TIPOS DISTINTOS DE RELOGIOS na linha de produtos:
+
+1. RELOGIO DIGITAL QUADRADO (Display LED amplo, caixa quadrada/retangular, digitos LED grandes de hora, estilo smartwatch quadrado):
+   - Se a foto mostrar esse relogio digital quadrado: O SPU correto no armazem e "V20" (ou SPU correspondente a relogio digital quadrado).
+   - Se o SPU "V20" estiver na lista do armazem, RETORNE "V20".
+   - NUNCA retorne R40 (analogico) para este relogio!
+
+2. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira estreita, botao circular na parte inferior da tela):
+   - ATENCAO CRUCIAL: Este modelo de relogio digital fino NAO ESTA CADASTRADO NO ARMAZEM DO SISTEMA!
+   - Se a foto mostrar este relogio digital fino/smartband oval, VOCE DEVE OBRIGATORIAMENTE RETORNAR "UNMAPPED_NARROW_DIGITAL_WATCH".
+   - NUNCA retorne R40 nem V20 para o relogio digital fino!
+
+3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com ponteiros de horas/minutos/segundos):
+   - O SPU correto no armazem e "R40" (ou SPU de relogio analogico).
+   - Se a foto mostrar relogio analogico de ponteiros e R40 estiver no armazem, RETORNE "R40".
+
+4. Para cada produto da foto que possuir um correspondente exato no armazem (tenis, fones i12, cinto V10, etc), inclua o SPU da lista do armazem.
+5. Responda SOMENTE com os SPUs identificados da lista do armazem ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400 ou SPU1, UNMAPPED_NARROW_DIGITAL_WATCH
 
 RESPOSTA:`
 
@@ -135,6 +146,10 @@ RESPOSTA:`
 
     for (const token of rawTokens) {
       const normToken = token.toUpperCase()
+      if (normToken.includes('UNMAPPED_NARROW') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO')) {
+        unmappedItems.push('Relógio Digital Fino (Smartband Oval)')
+        continue
+      }
       if (normToken.includes('UNMAPPED') || normToken.includes('DIGITAL_WATCH') || normToken.includes('RELOGIO_DIGITAL')) {
         unmappedItems.push('Relógio Digital')
         continue
