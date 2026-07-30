@@ -204,17 +204,27 @@ RESPOSTA:`
     for (const token of rawTokens) {
       const normToken = token.toUpperCase().trim()
 
-      // Detectar itens UNMAPPED de relógios digitais ou genéricos
-      if (normToken.includes('UNMAPPED') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO') || normToken.includes('SMARTBAND') || normToken.includes('DIGITAL_WATCH')) {
-        const isNarrowOrDigital = normToken.includes('NARROW') || normToken.includes('SMARTBAND') || normToken.includes('DIGITAL')
-        const itemDesc = isNarrowOrDigital ? 'Relógio Digital Fino (Smartband Oval)' : 'Relógio Digital Não Cadastrado'
+      // 1. Apenas relógio digital fino / smartband oval estreito não cadastrado é considerado UNMAPPED
+      const isNarrowSmartband = normToken.includes('NARROW') || normToken.includes('SMARTBAND') || normToken.includes('OVAL') || normToken.includes('CAPSULA')
+      
+      if (normToken.includes('UNMAPPED') && isNarrowSmartband) {
+        const itemDesc = 'Relógio Digital Fino (Smartband Oval)'
         if (!unmappedItems.includes(itemDesc)) {
           unmappedItems.push(itemDesc)
         }
         continue
       }
 
-      // Match ESTRITO apenas por código SPU
+      // 2. Se a IA retornar SPU ou termo indicando relógio digital/smartwatch e o armazém tiver V20, associar ao SPU V20
+      const hasV20InWarehouse = warehouseProducts.some(p => p.spu.toUpperCase() === 'V20')
+      if ((normToken === 'V20' || normToken.includes('DIGITAL') || normToken.includes('LED') || normToken.includes('SMARTWATCH')) && hasV20InWarehouse) {
+        if (!mentionedSpus.includes('V20')) {
+          mentionedSpus.push('V20')
+        }
+        continue
+      }
+
+      // 3. Match ESTRITO por código SPU cadastrado no armazém
       const matched = warehouseProducts.find(p => {
         const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, '').trim()
         const cleanNormToken = normToken.replace(/\s+/g, '').trim()
