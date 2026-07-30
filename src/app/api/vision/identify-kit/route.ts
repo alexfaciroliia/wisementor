@@ -144,42 +144,17 @@ export async function POST(req: NextRequest) {
     parts.push({
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
-
-    // 4d. Instruções do prompt (100% BASEADO NA IMAGEM DO ANUNCIO vs IMAGENS DE REFERENCIA)
     parts.push({
-      text: `INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL 100% BASEADA EM IMAGEM:
+      text: `INSTRUCOES DE IDENTIFICACAO VISUAL 100% BASEADA EM IMAGEM:
 Voce e um especialista em comparacao visual de fotos de produtos.
 Sua analise DEVE SER 100% BASEADA NA COMPARACAO VISUAL ENTRE A FOTO DO ANUNCIO E AS IMAGENS DE REFERENCIA DO ARMAZEM DO SUPABASE.
-DESCARTE COMPLETAMENTE TEXTOS OU TITULOS DO ANUNCIO. ANALISE EXCLUSIVAMENTE AS FORMAS E APERENCIA VISUAL NAS FOTOS.
+DESCARTE COMPLETAMENTE TEXTOS OU TITULOS DO ANUNCIO. ANALISE EXCLUSIVAMENTE AS FORMAS E APARÊNCIA VISUAL NAS FOTOS.
 
-REGRAS RIGIDAS DE IDENTIFICACAO VISUAL DE RELOGIOS:
-No armazem do cliente:
-1. SPU "V20": Relogio Digital Quadrado com tela LED ampla (estilo smartwatch quadrado).
-2. SPU "R40": Relogio Analogico de Ponteiros (caixa redonda com ponteiros mecanicos fisicos de hora e minuto).
+PARA CADA ITEM PRESENTE NA FOTO DO ANUNCIO:
+1. Encontre a imagem de referencia do armazem que seja visualmente correspondente em formato, modelo e tipo de produto, e retorne o codigo SPU dessa imagem de referencia.
+2. Se a foto do anuncio contiver algum produto que NAO CORRESPONDE a nenhuma imagem de referencia do armazem (por exemplo, um modelo de relogio ou acessorio que nao tem foto igual no armazem), retorne "UNMAPPED_[DESCRICAO_DO_ITEM]".
 
-EXAMINE O RELOGIO DA FOTO COM MAXIMA PRECISAO VISUAL:
-
-1. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira de silicone estreita):
-   - ATENCAO CRUCIAL: Este relogio digital fino/smartband oval NAO ESTA CADASTRADO NO ARMAZEM DO SUPABASE!
-   - Se a foto do anuncio mostrar este relogio digital fino/smartband oval, VOCE DEVE OBRIGATORIAMENTE RETORNAR "UNMAPPED_NARROW_DIGITAL_WATCH".
-   - E ABSOLUTAMENTE PROIBIDO RETORNAR R40 (analogico) NEM V20 (quadrado) PARA O RELOGIO DIGITAL FINO!
-
-2. RELOGIO DIGITAL QUADRADO (Display LED amplo quadrado/retangular, caixa ampla estilo smartwatch):
-   - Se a foto do anuncio mostrar esse relogio digital quadrado com visor de LED igual/semelhante a imagem de referencia do SPU "V20": O SPU correto e "V20".
-   - Retorne "V20".
-   - E ABSOLUTAMENTE PROIBIDO RETORNAR R40 (analogico) PARA ESTE RELOGIO!
-
-3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com PONTEIROS MECANICOS):
-   - O SPU correto no armazem e "R40".
-   - Retorne "R40" APENAS E SOMENTE se o relogio da foto tiver PONTEIROS MECANICOS FISICOS.
-
-REGRAS GERAIS DE COMPARACAO:
-- Se um item da foto do anuncio corresponder visualmente a uma imagem de referencia do armazem, retorne o SPU correspondente.
-- Se algum item da foto NAO corresponder a nenhuma imagem de referencia do armazem, retorne "UNMAPPED_[NOME_DO_ITEM]".
-
-Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_NARROW_DIGITAL_WATCH, LC-400, i12
-
-RESPOSTA:`
+Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_SMARTBAND_OVAL, LC-400, i12`
     })
 
     // 5. Chamar Gemini 2.0 Flash
@@ -191,7 +166,7 @@ RESPOSTA:`
 
     const rawText = (response.text || '').trim()
 
-    // 6. Parsear resposta de forma estrita por SPU
+    // 6. Parsear resposta de forma estrita e 100% dinamica por SPU (Sem nenhum SPU fixo no codigo!)
     let mentionedSpus: string[] = []
     const unmappedItems: string[] = []
 
@@ -204,40 +179,18 @@ RESPOSTA:`
     for (const token of rawTokens) {
       const normToken = token.toUpperCase().trim()
 
-      // 1. Apenas relógio digital fino / smartband oval estreito não cadastrado é considerado UNMAPPED
-      const isNarrowSmartband = normToken.includes('NARROW') || normToken.includes('SMARTBAND') || normToken.includes('OVAL') || normToken.includes('CAPSULA')
-      
-      if (normToken.includes('UNMAPPED') && isNarrowSmartband) {
-        const itemDesc = 'Relógio Digital Fino (Smartband Oval)'
-        if (!unmappedItems.includes(itemDesc)) {
-          unmappedItems.push(itemDesc)
+      if (normToken.startsWith('UNMAPPED')) {
+        const cleanUnmappedName = token.replace(/^UNMAPPED_?/i, '').replace(/_/g, ' ').trim() || 'Item Não Mapeado'
+        if (!unmappedItems.includes(cleanUnmappedName)) {
+          unmappedItems.push(cleanUnmappedName)
         }
         continue
       }
 
-      // 2. Se a IA retornar SPU ou termo indicando relógio digital/smartwatch e o armazém tiver V20, associar ao SPU V20
-      const hasV20InWarehouse = warehouseProducts.some(p => p.spu.toUpperCase() === 'V20')
-      if ((normToken === 'V20' || normToken.includes('DIGITAL') || normToken.includes('LED') || normToken.includes('SMARTWATCH')) && hasV20InWarehouse) {
-        if (!mentionedSpus.includes('V20')) {
-          mentionedSpus.push('V20')
-        }
-        continue
-      }
-
-      // 3. Match ESTRITO por código SPU cadastrado no armazém
+      // Match dinâmico contra a lista de produtos do armazém Supabase
       const matched = warehouseProducts.find(p => {
         const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, '').trim()
         const cleanNormToken = normToken.replace(/\s+/g, '').trim()
-
-        // Evitar trocar Digital por Analógico e vice-versa
-        const tokenIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(cleanNormToken)
-        const tokenIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(cleanNormToken)
-        const prodIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(pNormSpu) || /V20|DIGITAL|SMARTBAND|LED/.test((p.product_name || '').toUpperCase())
-        const prodIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormSpu) || /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test((p.product_name || '').toUpperCase())
-
-        if ((tokenIsDigital && prodIsAnalog) || (tokenIsAnalog && prodIsDigital)) {
-          return false
-        }
 
         return pNormSpu === cleanNormToken ||
                pNormSpu === cleanNormToken.replace(/-/g, '') ||
@@ -247,14 +200,6 @@ RESPOSTA:`
       if (matched && !mentionedSpus.includes(matched.spu)) {
         mentionedSpus.push(matched.spu)
       }
-    }
-
-    // TRAVA DE SEGURANÇA SUPREMA:
-    // Se a Visão AI detectou um relógio digital não cadastrado (unmappedItems possui relógio digital),
-    // REMOVER R40 (analógico) se porventura a IA tiver incluído R40 por engano.
-    const hasUnmappedDigitalWatch = unmappedItems.some(u => /digital|smartband/i.test(u))
-    if (hasUnmappedDigitalWatch) {
-      mentionedSpus = mentionedSpus.filter(spu => spu.toUpperCase() !== 'R40')
     }
 
     const confidence: 'high' | 'medium' | 'low' =
