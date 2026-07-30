@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const refImageResults = await Promise.all(
       spuEntries.map(async (entry) => {
         if (!entry.imageUrl) return { ...entry, imageData: null }
-        const imageData = await fetchImageBase64(entry.imageUrl, 6000)
+        const imageData = await fetchImageBase64(entry.imageUrl, 12000)
         return { ...entry, imageData }
       })
     )
@@ -145,36 +145,37 @@ export async function POST(req: NextRequest) {
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
 
-    // 4d. Instruções do prompt (100% BASEADO NA IMAGEM - SEM LER TITULO)
+    // 4d. Instruções do prompt (100% BASEADO NA IMAGEM DO ANUNCIO vs IMAGENS DE REFERENCIA)
     parts.push({
-      text: `INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL BASEADA 100% NA FOTO DO ANUNCIO:
-Voce e um especialista em identificacao visual de produtos de moda e acessorios.
-Sua analise DEVE SER 100% BASEADA NA FOTO DO ANUNCIO. NAO ADIVINHE E NAO ASSUMA PRODUTOS.
+      text: `INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL 100% BASEADA EM IMAGEM:
+Voce e um especialista em comparacao visual de fotos de produtos.
+Sua analise DEVE SER 100% BASEADA NA COMPARACAO VISUAL ENTRE A FOTO DO ANUNCIO E AS IMAGENS DE REFERENCIA DO ARMAZEM DO SUPABASE.
+DESCARTE COMPLETAMENTE TEXTOS OU TITULOS DO ANUNCIO. ANALISE EXCLUSIVAMENTE AS FORMAS E APERENCIA VISUAL NAS FOTOS.
 
-REGRAS RIGIDAS DE ARMAZEM E MODELOS DE RELOGIOS:
+REGRAS RIGIDAS DE IDENTIFICACAO VISUAL DE RELOGIOS:
 No armazem do cliente:
-- O SPU "R40" e EXCLUSIVAMENTE um Relogio Analogico com PONTEIROS MECANICOS FISICOS de horas e minutos.
-- O SPU "V20" e um Relogio Digital QUADRADO com tela LED ampla (estilo smartwatch quadrado).
+1. SPU "V20": Relogio Digital Quadrado com tela LED ampla (estilo smartwatch quadrado).
+2. SPU "R40": Relogio Analogico de Ponteiros (caixa redonda com ponteiros mecanicos fisicos de hora e minuto).
 
 EXAMINE O RELOGIO DA FOTO COM MAXIMA PRECISAO VISUAL:
 
-1. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira de silicone estreita, botao circular na parte inferior da tela):
-   - ATENCAO CRUCIAL: Este modelo de relogio digital fino/smartband oval NAO ESTA CADASTRADO NO ARMAZEM DO SISTEMA!
+1. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira de silicone estreita):
+   - ATENCAO CRUCIAL: Este relogio digital fino/smartband oval NAO ESTA CADASTRADO NO ARMAZEM DO SUPABASE!
    - Se a foto do anuncio mostrar este relogio digital fino/smartband oval, VOCE DEVE OBRIGATORIAMENTE RETORNAR "UNMAPPED_NARROW_DIGITAL_WATCH".
    - E ABSOLUTAMENTE PROIBIDO RETORNAR R40 (analogico) NEM V20 (quadrado) PARA O RELOGIO DIGITAL FINO!
 
-2. RELOGIO DIGITAL QUADRADO (Display LED amplo quadrado/retangular, caixa ampla estilo smartwatch, digitos LED grandes de hora, como mostrador com icone de coracao/PM):
-   - Se a foto mostrar esse relogio digital quadrado: O SPU correto no armazem e "V20".
-   - Se o SPU "V20" estiver na lista do armazem, RETORNE "V20".
+2. RELOGIO DIGITAL QUADRADO (Display LED amplo quadrado/retangular, caixa ampla estilo smartwatch):
+   - Se a foto do anuncio mostrar esse relogio digital quadrado com visor de LED igual/semelhante a imagem de referencia do SPU "V20": O SPU correto e "V20".
+   - Retorne "V20".
    - E ABSOLUTAMENTE PROIBIDO RETORNAR R40 (analogico) PARA ESTE RELOGIO!
 
-3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com PONTEIROS MECANICOS de horas/minutos):
+3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com PONTEIROS MECANICOS):
    - O SPU correto no armazem e "R40".
    - Retorne "R40" APENAS E SOMENTE se o relogio da foto tiver PONTEIROS MECANICOS FISICOS.
 
 REGRAS GERAIS DE COMPARACAO:
-- Para os demais itens (tenis LC-400, fones i12, cinto V10, sapato FN-6012, etc.), se o item da foto do anuncio corresponder visualmente a um produto do armazem, retorne o SPU desse produto.
-- Se algum item da foto NAO corresponder a nenhum produto do armazem, retorne "UNMAPPED_[NOME_DO_ITEM]".
+- Se um item da foto do anuncio corresponder visualmente a uma imagem de referencia do armazem, retorne o SPU correspondente.
+- Se algum item da foto NAO corresponder a nenhuma imagem de referencia do armazem, retorne "UNMAPPED_[NOME_DO_ITEM]".
 
 Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_NARROW_DIGITAL_WATCH, LC-400, i12
 
