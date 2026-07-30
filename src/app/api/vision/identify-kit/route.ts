@@ -180,6 +180,33 @@ Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separado
       const normToken = token.toUpperCase().trim()
 
       if (normToken.startsWith('UNMAPPED')) {
+        const isNarrowSmartband = /NARROW|SMARTBAND|OVAL|CAPSULA|FINO/i.test(normToken)
+        const isDigitalWatchToken = /DIGITAL|WATCH|RELOGIO|LED|SMARTWATCH/i.test(normToken)
+
+        if (isNarrowSmartband) {
+          const itemDesc = 'Relógio Digital Fino (Smartband Oval)'
+          if (!unmappedItems.includes(itemDesc)) {
+            unmappedItems.push(itemDesc)
+          }
+          continue
+        }
+
+        // Se for um relógio digital genérico/quadrado e o armazém tiver um produto de relógio (ex: V20), associar a ele
+        if (isDigitalWatchToken) {
+          const digitalWatchProd = warehouseProducts.find(p => {
+            const spuUpper = p.spu.toUpperCase()
+            const nameUpper = (p.product_name || '').toUpperCase()
+            return spuUpper === 'V20' || /V20|RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(spuUpper) || /RELOGIO|RELÓGIO|DIGITAL|SMARTWATCH/.test(nameUpper)
+          })
+
+          if (digitalWatchProd) {
+            if (!mentionedSpus.includes(digitalWatchProd.spu)) {
+              mentionedSpus.push(digitalWatchProd.spu)
+            }
+            continue
+          }
+        }
+
         const cleanUnmappedName = token.replace(/^UNMAPPED_?/i, '').replace(/_/g, ' ').trim() || 'Item Não Mapeado'
         if (!unmappedItems.includes(cleanUnmappedName)) {
           unmappedItems.push(cleanUnmappedName)
