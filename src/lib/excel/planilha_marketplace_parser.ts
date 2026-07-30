@@ -648,12 +648,41 @@ export async function processMarketplaceListingsWithVision(
       localErrors.push(errItem)
     }
 
-    // 2. EXTRAÇÃO DE COMPONENTES DO TÍTULO (APENAS FALLBACK SE VISION AI NÃO FOI USADA):
-    // Quando a Vision AI é acionada, a FOTO tem autoridade total de 100%. O título NÃO é utilizado para extrair produtos.
-    // Se a foto contiver algum produto ausente no armazém (knownUnmapped), o anúncio é enviado para a Central de Erros.
-    if (!visionUsed) {
-      const titleComponents = extractKitComponents(rawTitle)
+    // 2. EXTRAÇÃO E VALIDAÇÃO DE COMPONENTES:
+    // Se a Visão AI foi utilizada, a FOTO tem autoridade. Porém, validamos se todos os componentes esperados do kit possuem correspondente.
+    // Se algum componente do kit (ex: Relógio) não foi retornado pela Visão e nem consta no armazém, gera erro bloqueante na Central de Erros.
+    const titleComponents = extractKitComponents(rawTitle)
 
+    if (visionUsed) {
+      for (const compName of titleComponents) {
+        const isSatisfiedByVision = componentSPUs.some(spu => {
+          const p = targetProducts.find(prod => prod.spu.toUpperCase() === spu.toUpperCase())
+          if (!p) return false
+          const pName = (p.product_name || '').toLowerCase()
+          const pSpu = p.spu.toLowerCase()
+          const cLower = compName.toLowerCase()
+          return pName.includes(cLower) || pSpu.includes(cLower) || similarityScore(compName, p.product_name || '') > 0.3
+        })
+        const isCoveredByUnmapped = knownUnmapped.some(u => u.toLowerCase().includes(compName.toLowerCase().split(' ')[0]))
+
+        if (!isSatisfiedByVision && !isCoveredByUnmapped) {
+          const unmappedItem: ErrorLogItem = {
+            type: 'ERRO',
+            clientRow: firstRow.rowIdx,
+            productName: rawTitle,
+            field: 'Componente Não Localizado no Supabase',
+            originalValue: compName,
+            correctedValue: '-',
+            message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
+            generatedFile: 'Kits',
+            upSellerLineRange: '-'
+          }
+          globalErrorLogs.push(unmappedItem)
+          localErrors.push(unmappedItem)
+        }
+      }
+    } else {
+      // Fallback: se a Visão AI NÃO foi utilizada, extraímos produtos a partir das palavras do título
       for (const compName of titleComponents) {
         const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
         if (found) {
