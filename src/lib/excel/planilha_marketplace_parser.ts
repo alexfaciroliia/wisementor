@@ -651,40 +651,10 @@ export async function processMarketplaceListingsWithVision(
     }
 
     // 2. EXTRAÇÃO E VALIDAÇÃO DE COMPONENTES:
-    // Se a Visão AI foi utilizada, a FOTO tem autoridade. Porém, validamos se todos os componentes esperados do kit possuem correspondente.
-    // Se algum componente do kit (ex: Relógio) não foi retornado pela Visão e nem consta no armazém, gera erro bloqueante na Central de Erros.
-    const titleComponents = extractKitComponents(rawTitle)
-
-    if (visionUsed) {
-      for (const compName of titleComponents) {
-        const isSatisfiedByVision = componentSPUs.some(spu => {
-          const p = targetProducts.find(prod => prod.spu.toUpperCase() === spu.toUpperCase())
-          if (!p) return false
-          const pName = (p.product_name || '').toLowerCase()
-          const pSpu = p.spu.toLowerCase()
-          const cLower = compName.toLowerCase()
-          return pName.includes(cLower) || pSpu.includes(cLower) || similarityScore(compName, p.product_name || '') > 0.3
-        })
-        const isCoveredByUnmapped = knownUnmapped.some(u => u.toLowerCase().includes(compName.toLowerCase().split(' ')[0]))
-
-        if (!isSatisfiedByVision && !isCoveredByUnmapped) {
-          const unmappedItem: ErrorLogItem = {
-            type: 'ERRO',
-            clientRow: firstRow.rowIdx,
-            productName: rawTitle,
-            field: 'Componente Não Localizado no Supabase',
-            originalValue: compName,
-            correctedValue: '-',
-            message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
-            generatedFile: 'Kits',
-            upSellerLineRange: '-',
-            imageUrl: currentImgUrl
-          }
-          globalErrorLogs.push(unmappedItem)
-          localErrors.push(unmappedItem)
-        }
-      }
-    } else {
+    // Quando a Visão AI é utilizada, a identificação é 100% BASEADA EM FOTOS (Visão AI vs. Imagens de Referência do Supabase).
+    // O título do anúncio é 100% descartado. Não fazemos nenhuma validação de texto por palavras do título.
+    if (!visionUsed) {
+      const titleComponents = extractKitComponents(rawTitle)
       // Fallback: se a Visão AI NÃO foi utilizada, extraímos produtos a partir das palavras do título
       for (const compName of titleComponents) {
         const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
