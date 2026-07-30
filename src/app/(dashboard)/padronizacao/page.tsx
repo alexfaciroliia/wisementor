@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem, UnreconciledListingItem } from '@/lib/excel/planilha_marketplace_parser'
+import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem, UnreconciledListingItem, orderKitSpus } from '@/lib/excel/planilha_marketplace_parser'
 import { removeAccentsAndCedilla } from '@/lib/excel/planilha1_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
 import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules } from '@/lib/services/product_service'
@@ -37,6 +37,10 @@ export default function PadronizacaoPage() {
     const updatedRows: GeneratedKitRow[] = []
     const cleanTitle = item.title.replace(/\s+/g, ' ').trim()
 
+    // 1. Usar a lista completa de componentes do kit (ex: ["i12", "LC-400"])
+    const spus = item.componentSPUs && item.componentSPUs.length > 0 ? item.componentSPUs : [item.spu]
+    const spuPart = orderKitSpus(spus, [], [])
+
     for (const variationRow of item.rows) {
       const rawTam = (variationRow.sizeRaw || 'U').trim()
       const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
@@ -44,24 +48,27 @@ export default function PadronizacaoPage() {
       const cleanCor = removeAccentsAndCedilla(chosenColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
       const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
 
-      const existingListing = resultData.allListings.find(l => l.listingId === item.listingId)
-      const spusFromKitRows = existingListing?.generatedKitRows.map(r => r.sku.split('-')[0]).filter(Boolean) || []
-      const validSpus = Array.from(new Set(spusFromKitRows.length > 0 ? spusFromKitRows : [item.spu]))
-      const spuPart = validSpus.join('-')
       let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
       if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
 
       const imgForRow = (variationRow.imageUrl || item.imageUrl || '').trim()
-      const officialWarehouseSku = `${item.spu}-${chosenColor.charAt(0).toUpperCase() + chosenColor.slice(1).toLowerCase()}-${tam}`
 
-      const kitRow: GeneratedKitRow = {
-        kitSku,
-        title: cleanTitle,
-        imageUrl: imgForRow,
-        sku: officialWarehouseSku,
-        skuQty: 1
+      // 2. Gerar uma linha para CADA componente SPU do kit (ex: i12 + LC-400-Cinza-38)
+      for (const compSpu of spus) {
+        const normComp = compSpu.toUpperCase()
+        const officialWarehouseSku = (normComp.includes('I12') || normComp.includes('FONE'))
+          ? compSpu
+          : `${compSpu}-${chosenColor.charAt(0).toUpperCase() + chosenColor.slice(1).toLowerCase()}-${tam}`
+
+        const kitRow: GeneratedKitRow = {
+          kitSku,
+          title: cleanTitle,
+          imageUrl: imgForRow,
+          sku: officialWarehouseSku,
+          skuQty: 1
+        }
+        updatedRows.push(kitRow)
       }
-      updatedRows.push(kitRow)
     }
 
     setResultData(prev => {
@@ -90,7 +97,7 @@ export default function PadronizacaoPage() {
 
     setMessage({
       type: 'success',
-      text: `De-para de cor aplicado com sucesso para o anúncio ${item.listingId}! O anúncio foi movido para a Formação dos Kits.`
+      text: `De-para de cor aplicado com sucesso para o anúncio ${item.listingId}! Kit SKU '${updatedRows[0]?.kitSku}' movido para a Formação dos Kits.`
     })
   }
 

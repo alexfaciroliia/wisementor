@@ -34,6 +34,7 @@ export interface UnreconciledListingItem {
   title: string
   imageUrl: string
   spu: string
+  componentSPUs: string[]
   importedColor: string
   importedSize: string
   availableColorsInWarehouse: string[]
@@ -209,7 +210,7 @@ function findBestProductForComponent(
 }
 
 // 5. Ordenar SPUs do Kit (100% Parametrizado): Acessórios em Ordem Alfabética PRIMEIRO, Produto Principal por ÚLTIMO
-function orderKitSpus(
+export function orderKitSpus(
   componentSpus: string[],
   targetProducts: WarehouseProductItem[],
   categoryRules: ClientCategoryRule[] = []
@@ -253,7 +254,7 @@ function orderKitSpus(
 }
 
 // 6. Buscar o SKU exato no Armazém Supabase cruzando SPU + Cor + Tamanho
-function findExactWarehouseSku(
+export function findExactWarehouseSku(
   spu: string,
   cor: string,
   tam: string,
@@ -741,6 +742,7 @@ export async function processMarketplaceListingsWithVision(
         title: rawTitle,
         imageUrl: (firstRow.imageUrl || '').trim(),
         spu: unreconciledDetail.spu,
+        componentSPUs: [...componentSPUs],
         importedColor: unreconciledDetail.importedColor,
         importedSize: unreconciledDetail.importedSize,
         availableColorsInWarehouse: unreconciledDetail.availableColors,
