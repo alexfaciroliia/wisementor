@@ -151,22 +151,26 @@ export async function POST(req: NextRequest) {
 Voce e um especialista em identificacao visual de produtos de moda e acessorios.
 Sua analise DEVE SER 100% BASEADA NA FOTO DO ANUNCIO. NAO ADIVINHE E NAO ASSUMA PRODUTOS.
 
-ATENCAO RIGIDA PARA MODELOS E FORMATOS DE RELOGIOS:
-Existem 3 TIPOS DISTINTOS DE RELOGIOS. Analise a FOTO DO ANUNCIO com extrema precisao visual:
+REGRAS RIGIDAS DE ARMAZEM E MODELOS DE RELOGIOS:
+No armazem do cliente:
+- O SPU "R40" e EXCLUSIVAMENTE um Relogio Analogico com PONTEIROS MECANICOS FISICOS de horas e minutos.
+- O SPU "V20" e um Relogio Digital QUADRADO com tela LED ampla (estilo smartwatch quadrado).
+
+EXAMINE O RELOGIO DA FOTO COM MAXIMA PRECISAO VISUAL:
 
 1. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira de silicone estreita, botao circular na parte inferior da tela):
    - ATENCAO CRUCIAL: Este modelo de relogio digital fino/smartband oval NAO ESTA CADASTRADO NO ARMAZEM DO SISTEMA!
    - Se a foto do anuncio mostrar este relogio digital fino/smartband oval, VOCE DEVE OBRIGATORIAMENTE RETORNAR "UNMAPPED_NARROW_DIGITAL_WATCH".
-   - NUNCA retorne R40 (analogico) nem V20 (quadrado) para o relogio digital fino!
+   - E ABSOLUTAMENTE PROIBIDO RETORNAR R40 (analogico) NEM V20 (quadrado) PARA O RELOGIO DIGITAL FINO!
 
 2. RELOGIO DIGITAL QUADRADO (Display LED amplo quadrado/retangular, caixa ampla estilo smartwatch, digitos LED grandes de hora, como mostrador com icone de coracao/PM):
-   - Se a foto mostrar esse relogio digital quadrado: O SPU correto no armazem e "V20" (ou SPU de relogio digital quadrado).
+   - Se a foto mostrar esse relogio digital quadrado: O SPU correto no armazem e "V20".
    - Se o SPU "V20" estiver na lista do armazem, RETORNE "V20".
-   - NUNCA retorne R40 (analogico) para este relogio!
+   - E ABSOLUTAMENTE PROIBIDO RETORNAR R40 (analogico) PARA ESTE RELOGIO!
 
-3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com ponteiros mecanicos de horas/minutos/segundos):
-   - O SPU correto no armazem e "R40" (ou SPU de relogio analogico de ponteiros).
-   - Se a foto mostrar relogio analogico de ponteiros e R40 estiver no armazem, RETORNE "R40".
+3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com PONTEIROS MECANICOS de horas/minutos):
+   - O SPU correto no armazem e "R40".
+   - Retorne "R40" APENAS E SOMENTE se o relogio da foto tiver PONTEIROS MECANICOS FISICOS.
 
 REGRAS GERAIS DE COMPARACAO:
 - Para os demais itens (tenis LC-400, fones i12, cinto V10, sapato FN-6012, etc.), se o item da foto do anuncio corresponder visualmente a um produto do armazem, retorne o SPU desse produto.
@@ -187,7 +191,7 @@ RESPOSTA:`
     const rawText = (response.text || '').trim()
 
     // 6. Parsear resposta de forma estrita por SPU
-    const mentionedSpus: string[] = []
+    let mentionedSpus: string[] = []
     const unmappedItems: string[] = []
 
     const rawTokens = rawText
@@ -199,25 +203,17 @@ RESPOSTA:`
     for (const token of rawTokens) {
       const normToken = token.toUpperCase().trim()
 
-      // Detectar itens UNMAPPED
-      if (normToken.includes('UNMAPPED_NARROW') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO') || normToken.includes('SMARTBAND')) {
-        if (!unmappedItems.includes('Relógio Digital Fino (Smartband Oval)')) {
-          unmappedItems.push('Relógio Digital Fino (Smartband Oval)')
-        }
-        continue
-      }
-      if (normToken.startsWith('UNMAPPED')) {
-        const description = token
-          .replace(/^UNMAPPED[_-]?/i, '')
-          .replace(/_/g, ' ')
-          .trim()
-        if (description && !unmappedItems.includes(description)) {
-          unmappedItems.push(description)
+      // Detectar itens UNMAPPED de relógios digitais ou genéricos
+      if (normToken.includes('UNMAPPED') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO') || normToken.includes('SMARTBAND') || normToken.includes('DIGITAL_WATCH')) {
+        const isNarrowOrDigital = normToken.includes('NARROW') || normToken.includes('SMARTBAND') || normToken.includes('DIGITAL')
+        const itemDesc = isNarrowOrDigital ? 'Relógio Digital Fino (Smartband Oval)' : 'Relógio Digital Não Cadastrado'
+        if (!unmappedItems.includes(itemDesc)) {
+          unmappedItems.push(itemDesc)
         }
         continue
       }
 
-      // Match ESTRITO apenas por código SPU (evitando correspondência por palavras genéricas como "RELÓGIO")
+      // Match ESTRITO apenas por código SPU
       const matched = warehouseProducts.find(p => {
         const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, '').trim()
         const cleanNormToken = normToken.replace(/\s+/g, '').trim()
@@ -240,6 +236,14 @@ RESPOSTA:`
       if (matched && !mentionedSpus.includes(matched.spu)) {
         mentionedSpus.push(matched.spu)
       }
+    }
+
+    // TRAVA DE SEGURANÇA SUPREMA:
+    // Se a Visão AI detectou um relógio digital não cadastrado (unmappedItems possui relógio digital),
+    // REMOVER R40 (analógico) se porventura a IA tiver incluído R40 por engano.
+    const hasUnmappedDigitalWatch = unmappedItems.some(u => /digital|smartband/i.test(u))
+    if (hasUnmappedDigitalWatch) {
+      mentionedSpus = mentionedSpus.filter(spu => spu.toUpperCase() !== 'R40')
     }
 
     const confidence: 'high' | 'medium' | 'low' =

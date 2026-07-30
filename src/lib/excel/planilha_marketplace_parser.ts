@@ -688,7 +688,7 @@ export async function processMarketplaceListingsWithVision(
       fallbackReason: fallbackUsed ? fallbackReason : undefined
     })
 
-    const hasError = localErrors.some(e => e.type === 'ERRO')
+    const hasError = localErrors.some(e => e.type === 'ERRO') || knownUnmapped.length > 0
 
     if (componentSPUs.length === 0 || hasError) {
       if (componentSPUs.length === 0 && !hasError) {
