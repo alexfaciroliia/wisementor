@@ -540,10 +540,7 @@ export async function processMarketplaceListingsWithVision(
     listingsMap.get(id)!.push(row)
   }
 
-  const cleanTargetSpu = targetSpu ? sanitizeText(targetSpu).toUpperCase() : ''
-  const targetProducts = cleanTargetSpu
-    ? warehouseProducts.filter(p => sanitizeText(p.spu).toUpperCase().includes(cleanTargetSpu))
-    : warehouseProducts
+  const targetProducts = warehouseProducts
 
   const allEntries = [...listingsMap.entries()]
   const kitEntries = allEntries.filter(([, rows]) => {
