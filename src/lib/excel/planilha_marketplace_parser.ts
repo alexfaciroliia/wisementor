@@ -618,13 +618,12 @@ export async function processMarketplaceListingsWithVision(
           }
 
           imageVisionCache.set(imgUrl, { identified, unmapped })
-          // Marca visionUsed=true sempre que a chamada à Visão AI ocorreu com sucesso,
-          // independente de ter retornado SPUs ou só unmappedItems.
-          // Isso impede que o fallback por texto do título dispare e gere falsos ERROS.
-          visionUsed = true
-          visionConfidence = identified.length >= 2 ? 'high' : identified.length === 1 ? 'medium' : 'low'
-          if (identified.length > 0) {
-            componentSPUs = [...identified]
+          if (identified.length > 0 || unmapped.length > 0) {
+            visionUsed = true
+            visionConfidence = identified.length >= 2 ? 'high' : identified.length === 1 ? 'medium' : 'low'
+            if (identified.length > 0) {
+              componentSPUs = [...identified]
+            }
           }
         }
       } catch (visionErr: any) {
