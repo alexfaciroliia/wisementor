@@ -550,7 +550,7 @@ export async function processMarketplaceListingsWithVision(
     return hasKeyword || hasPlus
   })
 
-  const imageVisionCache = new Map<string, string[]>()
+  const imageVisionCache = new Map<string, { identified: string[]; unmapped: string[] }>()
   let kitIdx = 0
 
   for (const [listingId, rows] of allEntries) {
@@ -596,22 +596,28 @@ export async function processMarketplaceListingsWithVision(
     if (visionFn && imgUrl) {
       try {
         if (imageVisionCache.has(imgUrl)) {
-          componentSPUs = [...imageVisionCache.get(imgUrl)!]
+          const cached = imageVisionCache.get(imgUrl)!
+          componentSPUs = [...cached.identified]
+          if (cached.unmapped && cached.unmapped.length > 0) {
+            knownUnmapped.push(...cached.unmapped)
+          }
           visionUsed = true
           visionConfidence = 'cached'
         } else {
           const res = await visionFn(imgUrl, targetProducts, rawTitle)
           let identified: string[] = []
+          let unmapped: string[] = []
           if (Array.isArray(res)) {
             identified = res
           } else if (res && typeof res === 'object') {
             identified = res.identifiedSpus || []
             if (res.unmappedItems && res.unmappedItems.length > 0) {
+              unmapped = [...res.unmappedItems]
               knownUnmapped.push(...res.unmappedItems)
             }
           }
 
-          imageVisionCache.set(imgUrl, identified)
+          imageVisionCache.set(imgUrl, { identified, unmapped })
           if (identified.length > 0) {
             componentSPUs = [...identified]
             visionUsed = true
