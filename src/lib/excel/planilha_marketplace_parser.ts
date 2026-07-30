@@ -29,12 +29,25 @@ export interface GeneratedKitRow {
   skuQty: number
 }
 
+export interface UnreconciledListingItem {
+  listingId: string
+  title: string
+  imageUrl: string
+  spu: string
+  importedColor: string
+  importedSize: string
+  availableColorsInWarehouse: string[]
+  availableSizesInWarehouse: string[]
+  unmatchedType: 'color' | 'size' | 'both'
+  rows: MarketplaceListingRow[]
+}
+
 export interface ProcessedListingResult {
   listingId: string
   title: string
   cleanTitle: string
   statusMarketplace: string
-  listingStatus: 'pending' | 'standardized' | 'ignored_conjunto' | 'ambiguous_error' | 'blocked_error'
+  listingStatus: 'pending' | 'standardized' | 'ignored_conjunto' | 'ambiguous_error' | 'blocked_error' | 'unreconciled'
   detectedType: 'simple' | 'kit' | 'conjunto' | 'unknown'
   kitSku?: string
   generatedKitRows: GeneratedKitRow[]
@@ -45,6 +58,7 @@ export interface ParseMarketplaceResult {
   kitsRows: GeneratedKitRow[]
   allListings: ProcessedListingResult[]
   errorLogs: ErrorLogItem[]
+  unreconciledItems?: UnreconciledListingItem[]
 }
 
 // 1. Normalização para busca fuzzy tolerante
@@ -313,6 +327,46 @@ function findExactWarehouseSku(
   return [spu, formattedCor, formattedTam].filter(Boolean).join('-')
 }
 
+export function checkWarehouseColorSizeReconciliation(
+  spu: string,
+  cor: string,
+  tam: string,
+  targetProducts: WarehouseProductItem[]
+): {
+  isReconciled: boolean
+  matchedColor?: string
+  matchedSize?: string
+  availableColors: string[]
+  availableSizes: string[]
+} {
+  const normSpu = spu.toUpperCase()
+  const cleanTamVal = tam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim()
+  const normCor = normalizeForMatch(cor)
+  const normTam = normalizeForMatch(cleanTamVal)
+
+  const spuProducts = targetProducts.filter(p => p.spu.toUpperCase() === normSpu)
+  const availableColors = Array.from(new Set(spuProducts.map(p => p.color).filter(Boolean)))
+  const availableSizes = Array.from(new Set(spuProducts.map(p => p.size).filter(Boolean)))
+
+  if (spuProducts.length === 0 || availableColors.length === 0) {
+    return { isReconciled: true, availableColors, availableSizes }
+  }
+
+  const matchedProd = spuProducts.find(p => {
+    const pCor = normalizeForMatch(p.color)
+    const pSku = normalizeForMatch(p.sku)
+    return (pCor === normCor || (normCor && pCor.includes(normCor)) || (normCor && normCor.includes(pCor)) || (normCor && pSku.includes(normCor)))
+  })
+
+  return {
+    isReconciled: Boolean(matchedProd),
+    matchedColor: matchedProd?.color,
+    matchedSize: cleanTamVal,
+    availableColors,
+    availableSizes
+  }
+}
+
 // 7. Processar Anúncios do Marketplace conforme Prompt 2 (Kits & Regras de Negócio)
 export function processMarketplaceListings(
   marketplaceRows: MarketplaceListingRow[],
@@ -471,6 +525,7 @@ export async function processMarketplaceListingsWithVision(
   const allListings: ProcessedListingResult[] = []
   const globalErrorLogs: ErrorLogItem[] = []
   const visionLogs: VisionProcessingLog[] = []
+  const unreconciledItems: UnreconciledListingItem[] = []
 
   const listingsMap = new Map<string, MarketplaceListingRow[]>()
   for (const row of marketplaceRows) {
@@ -578,7 +633,7 @@ export async function processMarketplaceListingsWithVision(
         field: 'Componente Não Localizado no Supabase',
         originalValue: unmapped,
         correctedValue: '-',
-        message: `Componente '${unmapped}' identificado no anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre a variação correta no armazém.`,
+        message: `Componente '${unmapped}' identificado na imagem do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre a variação correta no armazém.`,
         generatedFile: 'Kits',
         upSellerLineRange: '-'
       }
@@ -656,6 +711,59 @@ export async function processMarketplaceListingsWithVision(
     const spuPart = orderKitSpus(componentSPUs, targetProducts, categoryRules)
     const itemKitRows: GeneratedKitRow[] = []
 
+    // 3. VERIFICAR CONCILIAÇÃO DE COR/TAMANHO PARA A NOVA ABA DE AJUSTES
+    let isUnreconciled = false
+    let unreconciledDetail: { spu: string; importedColor: string; importedSize: string; availableColors: string[]; availableSizes: string[]; unmatchedType: 'color' | 'size' | 'both' } | null = null
+
+    for (const variationRow of rows) {
+      const cor = (variationRow.colorRaw || '').trim()
+      const rawTam = (variationRow.sizeRaw || 'U').trim()
+      const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
+
+      for (const compSpu of componentSPUs) {
+        const checkRes = checkWarehouseColorSizeReconciliation(compSpu, cor, tam, targetProducts)
+        if (!checkRes.isReconciled) {
+          isUnreconciled = true
+          unreconciledDetail = {
+            spu: compSpu,
+            importedColor: cor,
+            importedSize: tam,
+            availableColors: checkRes.availableColors,
+            availableSizes: checkRes.availableSizes,
+            unmatchedType: 'color'
+          }
+          break
+        }
+      }
+      if (isUnreconciled) break
+    }
+
+    if (isUnreconciled && unreconciledDetail) {
+      unreconciledItems.push({
+        listingId,
+        title: rawTitle,
+        imageUrl: (firstRow.imageUrl || '').trim(),
+        spu: unreconciledDetail.spu,
+        importedColor: unreconciledDetail.importedColor,
+        importedSize: unreconciledDetail.importedSize,
+        availableColorsInWarehouse: unreconciledDetail.availableColors,
+        availableSizesInWarehouse: unreconciledDetail.availableSizes,
+        unmatchedType: unreconciledDetail.unmatchedType,
+        rows
+      })
+      allListings.push({
+        listingId,
+        title: rawTitle,
+        cleanTitle,
+        statusMarketplace: firstRow.status || 'ativo',
+        listingStatus: 'unreconciled',
+        detectedType: 'kit',
+        generatedKitRows: [],
+        errorLogs: localErrors
+      })
+      continue
+    }
+
     for (const variationRow of rows) {
       const cor = (variationRow.colorRaw || '').trim()
       const rawTam = (variationRow.sizeRaw || 'U').trim()
@@ -689,5 +797,5 @@ export async function processMarketplaceListingsWithVision(
     allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: localErrors })
   }
 
-  return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs }
+  return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs, unreconciledItems }
 }

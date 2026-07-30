@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem } from '@/lib/excel/planilha_marketplace_parser'
+import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem, UnreconciledListingItem } from '@/lib/excel/planilha_marketplace_parser'
+import { removeAccentsAndCedilla } from '@/lib/excel/planilha1_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
 import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules } from '@/lib/services/product_service'
 import { useDashboard } from '@/app/(dashboard)/layout'
@@ -17,7 +18,7 @@ export default function PadronizacaoPage() {
   const [processing, setProcessing] = useState(false)
   const [resultData, setResultData] = useState<ParseMarketplaceResult | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors' | 'vision'>('kits')
+  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'unreconciled' | 'errors' | 'vision'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
   const [visionProgress, setVisionProgress] = useState<{ current: number; total: number; listingId: string } | null>(null)
   const [visionLogs, setVisionLogs] = useState<VisionProcessingLog[]>([])
@@ -26,6 +27,72 @@ export default function PadronizacaoPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [hoveredImg, setHoveredImg] = useState<{ url: string; x: number; y: number } | null>(null)
   const [modalImg, setModalImg] = useState<string | null>(null)
+  const [selectedDePara, setSelectedDePara] = useState<{ [key: string]: string }>({})
+
+  // Aplicar De-para para um anúncio da aba Ajustes e movê-lo para Formação dos Kits
+  function handleApplyDePara(item: UnreconciledListingItem) {
+    if (!resultData) return
+    const chosenColor = selectedDePara[item.listingId] || item.availableColorsInWarehouse[0] || item.importedColor
+
+    const updatedRows: GeneratedKitRow[] = []
+    const cleanTitle = item.title.replace(/\s+/g, ' ').trim()
+
+    for (const variationRow of item.rows) {
+      const rawTam = (variationRow.sizeRaw || 'U').trim()
+      const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
+
+      const cleanCor = removeAccentsAndCedilla(chosenColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
+      const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
+
+      const existingListing = resultData.allListings.find(l => l.listingId === item.listingId)
+      const spus = existingListing?.generatedKitRows.map(r => r.sku.split('-')[0]) || [item.spu]
+
+      const spuPart = spus.join('-')
+      let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
+      if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
+
+      const imgForRow = (variationRow.imageUrl || item.imageUrl || '').trim()
+      const officialWarehouseSku = `${item.spu}-${chosenColor.charAt(0).toUpperCase() + chosenColor.slice(1).toLowerCase()}-${tam}`
+
+      const kitRow: GeneratedKitRow = {
+        kitSku,
+        title: cleanTitle,
+        imageUrl: imgForRow,
+        sku: officialWarehouseSku,
+        skuQty: 1
+      }
+      updatedRows.push(kitRow)
+    }
+
+    setResultData(prev => {
+      if (!prev) return prev
+      const newKitsRows = [...prev.kitsRows, ...updatedRows]
+      const newUnreconciled = (prev.unreconciledItems || []).filter(u => u.listingId !== item.listingId)
+      const newAllListings = prev.allListings.map(l => {
+        if (l.listingId === item.listingId) {
+          return {
+            ...l,
+            listingStatus: 'standardized' as const,
+            kitSku: updatedRows[0]?.kitSku,
+            generatedKitRows: updatedRows
+          }
+        }
+        return l
+      })
+
+      return {
+        ...prev,
+        kitsRows: newKitsRows,
+        allListings: newAllListings,
+        unreconciledItems: newUnreconciled
+      }
+    })
+
+    setMessage({
+      type: 'success',
+      text: `De-para de cor aplicado com sucesso para o anúncio ${item.listingId}! O anúncio foi movido para a Formação dos Kits.`
+    })
+  }
 
   // Processar padronização de SKUs e formação de kits (Prompt 2)
   async function handleProcessMarketplaceSheet() {
@@ -438,6 +505,21 @@ export default function PadronizacaoPage() {
             </button>
 
             <button
+              onClick={() => setActiveTab('unreconciled')}
+              style={{
+                padding: '0.75rem 1.25rem',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === 'unreconciled' ? '3px solid #60a5fa' : 'none',
+                color: activeTab === 'unreconciled' ? '#60a5fa' : '#94a3b8',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              🛠️ Ajustes de De-para ({resultData?.unreconciledItems?.length || 0})
+            </button>
+
+            <button
               onClick={() => setActiveTab('vision')}
               style={{
                 padding: '0.75rem 1.25rem',
@@ -591,6 +673,98 @@ export default function PadronizacaoPage() {
                       <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>Nenhuma alteração de SKU realizada. Tratar manualmente se necessário.</td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Conteúdo Aba Ajustes de De-para */}
+          {activeTab === 'unreconciled' && (
+            <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #3b82f6', padding: '1.25rem' }}>
+              <div style={{ marginBottom: '1rem', color: '#93c5fd', fontSize: '0.875rem', background: '#1e3a8a', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #3b82f6' }}>
+                💡 <strong>Central de Conciliação de Variações (De-para)</strong>: Os anúncios abaixo possuem cores/tamanhos na planilha importada que não têm correspondência exata cadastrada no armazém Supabase. Selecione a variação correta para mover o anúncio para a <strong>Formação dos Kits</strong>.
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', color: '#cbd5e1' }}>
+                <thead>
+                  <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                    <th style={{ padding: '0.75rem 1rem', color: '#94a3b8', fontSize: '0.8rem' }}>ID Anúncio</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Título do Anúncio</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>SPU Armazém</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Cor da Planilha Importada</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Cor no Armazém Supabase (De-para)</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!resultData?.unreconciledItems || resultData.unreconciledItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.95rem' }}>
+                        🎉 Nenhum ajuste pendente! Todos os anúncios estão 100% conciliados com o armazém do Supabase.
+                      </td>
+                    </tr>
+                  ) : (
+                    resultData.unreconciledItems
+                      .filter(item => {
+                        if (!searchTerm.trim()) return true
+                        const norm = searchTerm.trim().toLowerCase()
+                        return [item.listingId, item.title, item.spu, item.importedColor, item.availableColorsInWarehouse.join(' ')].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                      })
+                      .map((item, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{item.listingId}</td>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>{item.title}</td>
+                        <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', color: '#38bdf8' }}>{item.spu}</td>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: 700 }}>
+                          <span style={{ background: '#78350f', color: '#fde047', padding: '0.3rem 0.75rem', borderRadius: '6px', border: '1px solid #d97706', fontSize: '0.85rem' }}>
+                            {item.importedColor}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <select
+                            value={selectedDePara[item.listingId] || item.availableColorsInWarehouse[0] || ''}
+                            onChange={e => setSelectedDePara({ ...selectedDePara, [item.listingId]: e.target.value })}
+                            style={{
+                              padding: '0.55rem 0.85rem',
+                              borderRadius: '6px',
+                              background: '#1a1e2e',
+                              border: '1px solid #3b82f6',
+                              color: '#4ade80',
+                              fontWeight: 700,
+                              outline: 'none',
+                              width: '100%',
+                              maxWidth: '240px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {item.availableColorsInWarehouse.map((c, cIdx) => (
+                              <option key={cIdx} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyDePara(item)}
+                            style={{
+                              padding: '0.55rem 1.1rem',
+                              borderRadius: '6px',
+                              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                              border: 'none',
+                              color: '#fff',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                            }}
+                          >
+                            ✓ Aplicar De-para & Mover para Kits
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

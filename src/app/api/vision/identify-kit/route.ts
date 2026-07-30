@@ -101,10 +101,10 @@ INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL:
 1. Examine a IMAGEM em busca de CADA um dos itens visualmente presentes (exemplo: modelo/formato de sapato/tenis, tipo de cinto, modelo de fone, relogio digital vs analogico, carteira).
 2. PRIORIDADE DA IMAGEM: A foto visual sobressai sobre o titulo. O titulo serve APENAS como apoio secundario.
 3. ATENCAO ABSOLUTA PARA RELOGIOS E ACESSORIOS:
-   - Se a foto mostrar um Relogio Digital (tela LED preta, numeros digitais, pulseira de silicone/smartband) e o armazem SO TIVER Relogio Analogico (ex: R40 / RELOGIO ANALOGICO com ponteiros), NAO RETORNE R40! Escreva "UNMAPPED_DIGITAL_WATCH".
-   - Se a foto mostrar qualquer item que NAO tem correspondente no armazem pelo formato/tipo, escreva "UNMAPPED_[NOME_DO_ITEM]".
-4. Para cada produto da foto que possuir um correspondente no armazem, inclua o SPU da lista do armazem.
-5. Responda SOMENTE com os SPUs identificados da lista do armazem ou itens UNMAPPED, separados por virgula. Exemplo de formato: SPU1, SPU2
+   - Se a foto mostrar um Relogio Digital (tela LED preta, numeros digitais, pulseira de silicone/smartband) e a lista do armazem NAO TIVER um SPU de Relogio Digital (exemplo: se a lista so tiver R40 / RELOGIO ANALOGICO com ponteiros), NAO RETORNE R40! Escreva "UNMAPPED_DIGITAL_WATCH".
+   - Se a foto mostrar qualquer item que NAO tem correspondente no armazem pelo formato/tipo/variacao fisica, escreva "UNMAPPED_[NOME_DO_ITEM]".
+4. Para cada produto da foto que possuir um correspondente exato no armazem, inclua o SPU da lista do armazem.
+5. Responda SOMENTE com os SPUs identificados da lista do armazem ou itens UNMAPPED, separados por virgula. Exemplo de formato: SPU1, SPU2, UNMAPPED_DIGITAL_WATCH
 
 RESPOSTA:`
 
