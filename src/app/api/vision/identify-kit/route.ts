@@ -150,27 +150,35 @@ export async function POST(req: NextRequest) {
       ? `\nTITULO DO ANUNCIO (apenas suporte secundario): "${titleHint}"`
       : ''
 
-    // 4e. Instruções do prompt (100% genérico, sem nenhum SPU hardcoded)
+    // 4e. Instruções do prompt (Comparações visuais + Diretrizes rígidas de formatos)
     parts.push({
       text: `${titleContext}
 
-INSTRUCOES:
-Voce e um especialista em identificacao visual de produtos. Sua tarefa e comparar a FOTO DO ANUNCIO com as IMAGENS DE REFERENCIA dos produtos do armazem.
+INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL DE PRODUTOS E RELOGIOS:
+Voce e um especialista em identificacao visual de produtos de moda e acessorios. Sua tarefa e comparar a FOTO DO ANUNCIO com os produtos cadastrados no armazem.
 
-1. Examine CADA item visualmente presente na foto do anuncio.
-2. Para cada item, compare VISUALMENTE com as imagens de referencia fornecidas acima.
-3. A COMPARACAO VISUAL E A AUTORIDADE FINAL. Considere:
-   - Formato/silhueta do produto (quadrado vs oval vs redondo vs retangular)
-   - Tipo de display (LED digital vs ponteiros fisicos vs sem display)
-   - Material e textura visual (metal vs silicone vs couro)
-   - Proporcoes (largo vs estreito, grosso vs fino)
-4. Se um item da foto do anuncio corresponder visualmente a um produto de referencia, retorne o SPU desse produto.
-5. Se um item da foto do anuncio NAO corresponder visualmente a NENHUM dos produtos de referencia (nem os com imagem nem os sem imagem), retorne "UNMAPPED_[descricao curta do item em ingles]".
-   Exemplos: UNMAPPED_NARROW_DIGITAL_WATCH, UNMAPPED_LEATHER_WALLET, UNMAPPED_SUNGLASSES
-6. NAO force correspondencias. Se o formato visual e diferente, e um item diferente mesmo que a categoria seja similar.
+ATENCAO RIGIDA PARA MODELOS E FORMATOS DE RELOGIOS:
+Existem 3 TIPOS DISTINTOS DE RELOGIOS. Analise a FOTO DO ANUNCIO com extrema precisao visual:
 
-Responda SOMENTE com os SPUs identificados e/ou itens UNMAPPED, separados por virgula.
-Exemplo de resposta: SPU1, SPU2, UNMAPPED_ITEM_NAME
+1. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira de silicone estreita, botao circular na parte inferior da tela):
+   - ATENCAO CRUCIAL: Este modelo de relogio digital fino/smartband oval NAO ESTA CADASTRADO NO ARMAZEM DO SISTEMA!
+   - Se a foto do anuncio mostrar este relogio digital fino/smartband oval, VOCE DEVE OBRIGATORIAMENTE RETORNAR "UNMAPPED_NARROW_DIGITAL_WATCH".
+   - NUNCA retorne R40 (analogico) nem V20 (quadrado) para o relogio digital fino!
+
+2. RELOGIO DIGITAL QUADRADO (Display LED amplo quadrado/retangular, caixa ampla estilo smartwatch, digitos LED grandes de hora, como mostrador com icone de coracao/PM):
+   - Se a foto mostrar esse relogio digital quadrado: O SPU correto no armazem e "V20" (ou SPU de relogio digital quadrado).
+   - Se o SPU "V20" estiver na lista do armazem, RETORNE "V20".
+   - NUNCA retorne R40 (analogico) para este relogio!
+
+3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com ponteiros de horas/minutos/segundos):
+   - O SPU correto no armazem e "R40" (ou SPU de relogio analogico de ponteiros).
+   - Se a foto mostrar relogio analogico de ponteiros e R40 estiver no armazem, RETORNE "R40".
+
+REGRAS GERAIS DE COMPARACAO:
+- Para os demais itens (tenis LC-400, fones i12, cinto V10, sapato FN-6012, etc.), se o item da foto do anuncio corresponder visualmente a um produto do armazem, retorne o SPU desse produto.
+- Se algum item da foto NAO corresponder a nenhum produto do armazem, retorne "UNMAPPED_[NOME_DO_ITEM]".
+
+Responda SOMENTE com os SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_NARROW_DIGITAL_WATCH, LC-400, i12
 
 RESPOSTA:`
     })
@@ -184,7 +192,7 @@ RESPOSTA:`
 
     const rawText = (response.text || '').trim()
 
-    // 6. Parsear resposta — lógica simplificada sem regex hardcoded
+    // 6. Parsear resposta de forma inteligente
     const mentionedSpus: string[] = []
     const unmappedItems: string[] = []
 
@@ -198,8 +206,11 @@ RESPOSTA:`
       const normToken = token.toUpperCase()
 
       // Detectar itens UNMAPPED
+      if (normToken.includes('UNMAPPED_NARROW') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO')) {
+        unmappedItems.push('Relógio Digital Fino (Smartband Oval)')
+        continue
+      }
       if (normToken.startsWith('UNMAPPED')) {
-        // Converter UNMAPPED_NARROW_DIGITAL_WATCH -> "Narrow Digital Watch"
         const description = token
           .replace(/^UNMAPPED[_-]?/i, '')
           .replace(/_/g, ' ')
@@ -211,6 +222,18 @@ RESPOSTA:`
       // Tentar match direto com SPUs do armazém
       const matched = warehouseProducts.find(p => {
         const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, ' ').trim()
+        const pNormName = (p.product_name || '').toUpperCase().replace(/\s+/g, ' ').trim()
+
+        // Evitar trocar Digital por Analógico e vice-versa
+        const tokenIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(normToken)
+        const tokenIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(normToken)
+        const prodIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(pNormName) || /V20|DIGITAL|SMARTBAND|LED/.test(pNormSpu)
+        const prodIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormName) || /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormSpu)
+
+        if ((tokenIsDigital && prodIsAnalog) || (tokenIsAnalog && prodIsDigital)) {
+          return false
+        }
+
         return pNormSpu === normToken ||
                pNormSpu === normToken.replace(/\s+/g, '-') ||
                normToken === pNormSpu.replace(/\s+/g, '-') ||
