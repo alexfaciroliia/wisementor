@@ -145,17 +145,11 @@ export async function POST(req: NextRequest) {
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
 
-    // 4d. Contexto do título (apenas suporte secundário)
-    const titleContext = titleHint
-      ? `\nTITULO DO ANUNCIO (apenas suporte secundario): "${titleHint}"`
-      : ''
-
-    // 4e. Instruções do prompt (Comparações visuais + Diretrizes rígidas de formatos)
+    // 4d. Instruções do prompt (100% BASEADO NA IMAGEM - SEM LER TITULO)
     parts.push({
-      text: `${titleContext}
-
-INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL DE PRODUTOS E RELOGIOS:
-Voce e um especialista em identificacao visual de produtos de moda e acessorios. Sua tarefa e comparar a FOTO DO ANUNCIO com os produtos cadastrados no armazem.
+      text: `INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL BASEADA 100% NA FOTO DO ANUNCIO:
+Voce e um especialista em identificacao visual de produtos de moda e acessorios.
+Sua analise DEVE SER 100% BASEADA NA FOTO DO ANUNCIO. NAO ADIVINHE E NAO ASSUMA PRODUTOS.
 
 ATENCAO RIGIDA PARA MODELOS E FORMATOS DE RELOGIOS:
 Existem 3 TIPOS DISTINTOS DE RELOGIOS. Analise a FOTO DO ANUNCIO com extrema precisao visual:
@@ -170,7 +164,7 @@ Existem 3 TIPOS DISTINTOS DE RELOGIOS. Analise a FOTO DO ANUNCIO com extrema pre
    - Se o SPU "V20" estiver na lista do armazem, RETORNE "V20".
    - NUNCA retorne R40 (analogico) para este relogio!
 
-3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com ponteiros de horas/minutos/segundos):
+3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com ponteiros mecanicos de horas/minutos/segundos):
    - O SPU correto no armazem e "R40" (ou SPU de relogio analogico de ponteiros).
    - Se a foto mostrar relogio analogico de ponteiros e R40 estiver no armazem, RETORNE "R40".
 
@@ -178,7 +172,7 @@ REGRAS GERAIS DE COMPARACAO:
 - Para os demais itens (tenis LC-400, fones i12, cinto V10, sapato FN-6012, etc.), se o item da foto do anuncio corresponder visualmente a um produto do armazem, retorne o SPU desse produto.
 - Se algum item da foto NAO corresponder a nenhum produto do armazem, retorne "UNMAPPED_[NOME_DO_ITEM]".
 
-Responda SOMENTE com os SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_NARROW_DIGITAL_WATCH, LC-400, i12
+Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_NARROW_DIGITAL_WATCH, LC-400, i12
 
 RESPOSTA:`
     })
@@ -192,7 +186,7 @@ RESPOSTA:`
 
     const rawText = (response.text || '').trim()
 
-    // 6. Parsear resposta de forma inteligente
+    // 6. Parsear resposta de forma estrita por SPU
     const mentionedSpus: string[] = []
     const unmappedItems: string[] = []
 
@@ -203,11 +197,13 @@ RESPOSTA:`
       .filter((t: string) => t.length > 0)
 
     for (const token of rawTokens) {
-      const normToken = token.toUpperCase()
+      const normToken = token.toUpperCase().trim()
 
       // Detectar itens UNMAPPED
-      if (normToken.includes('UNMAPPED_NARROW') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO')) {
-        unmappedItems.push('Relógio Digital Fino (Smartband Oval)')
+      if (normToken.includes('UNMAPPED_NARROW') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO') || normToken.includes('SMARTBAND')) {
+        if (!unmappedItems.includes('Relógio Digital Fino (Smartband Oval)')) {
+          unmappedItems.push('Relógio Digital Fino (Smartband Oval)')
+        }
         continue
       }
       if (normToken.startsWith('UNMAPPED')) {
@@ -215,30 +211,30 @@ RESPOSTA:`
           .replace(/^UNMAPPED[_-]?/i, '')
           .replace(/_/g, ' ')
           .trim()
-        unmappedItems.push(description || 'Item Não Identificado')
+        if (description && !unmappedItems.includes(description)) {
+          unmappedItems.push(description)
+        }
         continue
       }
 
-      // Tentar match direto com SPUs do armazém
+      // Match ESTRITO apenas por código SPU (evitando correspondência por palavras genéricas como "RELÓGIO")
       const matched = warehouseProducts.find(p => {
-        const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, ' ').trim()
-        const pNormName = (p.product_name || '').toUpperCase().replace(/\s+/g, ' ').trim()
+        const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, '').trim()
+        const cleanNormToken = normToken.replace(/\s+/g, '').trim()
 
         // Evitar trocar Digital por Analógico e vice-versa
-        const tokenIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(normToken)
-        const tokenIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(normToken)
-        const prodIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(pNormName) || /V20|DIGITAL|SMARTBAND|LED/.test(pNormSpu)
-        const prodIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormName) || /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormSpu)
+        const tokenIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(cleanNormToken)
+        const tokenIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(cleanNormToken)
+        const prodIsDigital = /V20|DIGITAL|SMARTBAND|LED/.test(pNormSpu) || /V20|DIGITAL|SMARTBAND|LED/.test((p.product_name || '').toUpperCase())
+        const prodIsAnalog = /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormSpu) || /R40|ANALOGIC|ANALÓGIC|PONTEIRO/.test((p.product_name || '').toUpperCase())
 
         if ((tokenIsDigital && prodIsAnalog) || (tokenIsAnalog && prodIsDigital)) {
           return false
         }
 
-        return pNormSpu === normToken ||
-               pNormSpu === normToken.replace(/\s+/g, '-') ||
-               normToken === pNormSpu.replace(/\s+/g, '-') ||
-               pNormSpu.includes(normToken) ||
-               normToken.includes(pNormSpu)
+        return pNormSpu === cleanNormToken ||
+               pNormSpu === cleanNormToken.replace(/-/g, '') ||
+               cleanNormToken === pNormSpu.replace(/-/g, '')
       })
 
       if (matched && !mentionedSpus.includes(matched.spu)) {

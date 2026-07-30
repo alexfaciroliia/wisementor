@@ -642,27 +642,20 @@ export async function processMarketplaceListingsWithVision(
       localErrors.push(errItem)
     }
 
-    // 2. EXTRAÇÃO DE COMPONENTES DO TÍTULO:
-    // Se a Vision AI FOI utilizada com sucesso, a foto tem autoridade total.
-    // O título serve APENAS para detectar componentes ausentes (erros), NÃO para adicionar SPUs novos.
-    // Se a Vision AI NÃO foi utilizada, o título é o fallback principal e PODE adicionar SPUs.
-    const titleComponents = extractKitComponents(rawTitle)
+    // 2. EXTRAÇÃO DE COMPONENTES DO TÍTULO (APENAS FALLBACK SE VISION AI NÃO FOI USADA):
+    // Quando a Vision AI é acionada, a FOTO tem autoridade total de 100%. O título NÃO é utilizado para extrair produtos.
+    // Se a foto contiver algum produto ausente no armazém (knownUnmapped), o anúncio é enviado para a Central de Erros.
+    if (!visionUsed) {
+      const titleComponents = extractKitComponents(rawTitle)
 
-    for (const compName of titleComponents) {
-      const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
-      if (found) {
-        const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-        // Só adicionar SPU do título se a Vision AI NÃO foi usada (fallback de título)
-        if (!visionUsed && !componentSPUs.includes(cleanSpu)) {
-          componentSPUs.push(cleanSpu)
-        }
-      } else {
-        // Só logar erro se a Vision AI também não encontrou este componente
-        const visionAlreadyHandled = visionUsed && (
-          componentSPUs.length > 0 ||
-          knownUnmapped.some(u => u.toLowerCase().includes(compName.toLowerCase().split(' ')[0]))
-        )
-        if (!visionAlreadyHandled) {
+      for (const compName of titleComponents) {
+        const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
+        if (found) {
+          const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
+          if (!componentSPUs.includes(cleanSpu)) {
+            componentSPUs.push(cleanSpu)
+          }
+        } else {
           const alreadyLogged = localErrors.some(e => e.originalValue === compName || e.message.includes(compName))
           if (!alreadyLogged) {
             const unmappedItem: ErrorLogItem = {
@@ -681,9 +674,6 @@ export async function processMarketplaceListingsWithVision(
           }
         }
       }
-    }
-
-    if (!visionUsed) {
       fallbackUsed = true
       fallbackReason = fallbackReason || (!imgUrl ? 'Sem URL de imagem' : !visionFn ? 'Vision AI não configurada' : 'Vision retornou 0 resultados')
     }
