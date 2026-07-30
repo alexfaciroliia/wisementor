@@ -148,8 +148,9 @@ function findBestProductForComponent(
 
   const normComponent = componentName.toLowerCase()
 
-  const isDigitalWatchUnmapped = knownUnmappedCategories.some(u => /digital|smartband|led/i.test(u))
-  const isAnalogWatchUnmapped = knownUnmappedCategories.some(u => /analogic|analógic|ponteiro/i.test(u))
+  const isDigitalWatchComp = /digital|smartband|led|smartwatch/i.test(normComponent)
+  const isAnalogWatchComp = /analogic|analógic|ponteiro/i.test(normComponent)
+  const isWatchComp = normComponent.includes('reló') || isDigitalWatchComp || isAnalogWatchComp
 
   let bestScore = 0
   let bestProduct: WarehouseProductItem | null = null
@@ -158,15 +159,19 @@ function findBestProductForComponent(
     const pName = (product.product_name || '').toLowerCase()
     const pSpu = product.spu.toLowerCase()
 
-    const isProdAnalog = /analogic|analógic|ponteiro/i.test(pName) || /analogic|analógic|ponteiro/i.test(pSpu)
-    const isProdDigital = /digital|smartband|led/i.test(pName) || /digital|smartband|led/i.test(pSpu)
+    const isProdAnalog = /r40|analogic|analógic|ponteiro/i.test(pName) || /r40|analogic|analógic|ponteiro/i.test(pSpu)
+    const isProdDigital = /v20|digital|smartband|led|smartwatch/i.test(pName) || /v20|digital|smartband|led|smartwatch/i.test(pSpu) || (!isProdAnalog && (pName.includes('reló') || pSpu.includes('reló')))
 
-    if (isDigitalWatchUnmapped && isProdAnalog) continue
-    if (isAnalogWatchUnmapped && isProdDigital) continue
+    if (isDigitalWatchComp && isProdAnalog) continue
+    if (isAnalogWatchComp && isProdDigital) continue
 
     const nameScore = similarityScore(componentName, product.product_name || '')
     const spuScore = similarityScore(componentName, product.spu)
-    const score = Math.max(nameScore, spuScore)
+    let score = Math.max(nameScore, spuScore)
+
+    if (isWatchComp && (isProdDigital || pName.includes('reló') || pSpu.includes('v20'))) {
+      score = Math.max(score, 0.85)
+    }
 
     if (score > bestScore) {
       bestScore = score
@@ -190,8 +195,8 @@ function findBestProductForComponent(
         const isProdAnalog = /analogic|analógic|ponteiro/i.test(pName) || /analogic|analógic|ponteiro/i.test(pSpu)
         const isProdDigital = /digital|smartband|led/i.test(pName) || /digital|smartband|led/i.test(pSpu)
 
-        if (isDigitalWatchUnmapped && isProdAnalog) return false
-        if (isAnalogWatchUnmapped && isProdDigital) return false
+        if (isDigitalWatchComp && isProdAnalog) return false
+        if (isAnalogWatchComp && isProdDigital) return false
 
         const spuMatch = rule.spu_patterns?.some(pat => pSpu.includes(pat.toUpperCase()))
         const nameMatch = pName.includes(rule.category_name.toLowerCase()) || rule.keywords.some(kw => pName.includes(kw.toLowerCase()))
