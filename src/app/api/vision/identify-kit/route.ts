@@ -22,6 +22,27 @@ export interface VisionIdentifyResponse {
   error?: string
 }
 
+// Helper: baixar imagem e converter para base64 com timeout curto
+async function fetchImageBase64(url: string, timeoutMs = 8000): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WiseMentor/1.0)' },
+      signal: AbortSignal.timeout(timeoutMs)
+    })
+    if (!res.ok) return null
+
+    const contentType = res.headers.get('content-type') || 'image/jpeg'
+    let mimeType = contentType.split(';')[0].trim()
+    if (!mimeType.startsWith('image/')) mimeType = 'image/jpeg'
+
+    const arrayBuffer = await res.arrayBuffer()
+    const base64 = Buffer.from(arrayBuffer).toString('base64')
+    return { base64, mimeType }
+  } catch {
+    return null
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY
@@ -46,95 +67,124 @@ export async function POST(req: NextRequest) {
       } as VisionIdentifyResponse, { status: 200 })
     }
 
-    // Baixar a imagem e converter para base64
-    let imageBase64: string
-    let mimeType: string = 'image/jpeg'
-
-    try {
-      const imgRes = await fetch(imageUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WiseMentor/1.0)' },
-        signal: AbortSignal.timeout(12000)
-      })
-      if (!imgRes.ok) throw new Error(`HTTP ${imgRes.status}`)
-
-      const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
-      mimeType = contentType.split(';')[0].trim()
-      if (!mimeType.startsWith('image/')) mimeType = 'image/jpeg'
-
-      const arrayBuffer = await imgRes.arrayBuffer()
-      imageBase64 = Buffer.from(arrayBuffer).toString('base64')
-    } catch (fetchErr: any) {
+    // 1. Baixar a imagem do anúncio
+    const listingImage = await fetchImageBase64(imageUrl, 12000)
+    if (!listingImage) {
       return NextResponse.json({
         identifiedSpus: [],
         confidence: 'low',
-        reasoning: `Nao foi possivel baixar a imagem: ${fetchErr.message}`,
+        reasoning: 'Nao foi possivel baixar a imagem do anuncio.',
         error: 'IMAGE_FETCH_ERROR'
       } as VisionIdentifyResponse, { status: 200 })
     }
 
-    // Montar lista de produtos para o prompt (com SPUs únicos)
-    const spuMap = new Map<string, string>()
-    warehouseProducts.forEach(p => {
-      if (p.spu && !spuMap.has(p.spu.toUpperCase())) {
-        spuMap.set(p.spu.toUpperCase(), p.product_name || p.spu)
+    // 2. Deduplicar SPUs e coletar a primeira image_url de cada SPU
+    const spuRefMap = new Map<string, { spu: string; name: string; imageUrl: string | null }>()
+    for (const p of warehouseProducts) {
+      if (!p.spu) continue
+      const key = p.spu.toUpperCase()
+      if (!spuRefMap.has(key)) {
+        spuRefMap.set(key, {
+          spu: p.spu,
+          name: p.product_name || p.spu,
+          imageUrl: p.image_url && p.image_url.trim() ? p.image_url.trim() : null
+        })
+      } else if (!spuRefMap.get(key)!.imageUrl && p.image_url && p.image_url.trim()) {
+        spuRefMap.get(key)!.imageUrl = p.image_url.trim()
       }
+    }
+
+    // 3. Baixar imagens de referência de cada SPU em paralelo
+    const spuEntries = Array.from(spuRefMap.values())
+    const refImageResults = await Promise.all(
+      spuEntries.map(async (entry) => {
+        if (!entry.imageUrl) return { ...entry, imageData: null }
+        const imageData = await fetchImageBase64(entry.imageUrl, 6000)
+        return { ...entry, imageData }
+      })
+    )
+
+    // Separar SPUs com e sem imagem de referência
+    const spusWithImage = refImageResults.filter(r => r.imageData !== null)
+    const spusWithoutImage = refImageResults.filter(r => r.imageData === null)
+
+    // 4. Montar as parts do prompt multi-imagem
+    const parts: any[] = []
+
+    // 4a. Imagens de referência dos produtos do armazém (com labels)
+    if (spusWithImage.length > 0) {
+      parts.push({
+        text: `IMAGENS DE REFERENCIA DOS PRODUTOS CADASTRADOS NO ARMAZEM DO CLIENTE:\nAbaixo estao ${spusWithImage.length} imagens de referencia. Cada imagem e de um produto diferente com seu SPU e nome.\nUse estas imagens para fazer COMPARACAO VISUAL DIRETA com a foto do anuncio.\n`
+      })
+
+      for (const ref of spusWithImage) {
+        parts.push({
+          text: `--- PRODUTO DE REFERENCIA: SPU="${ref.spu}" | Nome="${ref.name}" ---`
+        })
+        parts.push({
+          inlineData: { mimeType: ref.imageData!.mimeType, data: ref.imageData!.base64 }
+        })
+      }
+    }
+
+    // 4b. SPUs sem imagem (apenas texto)
+    if (spusWithoutImage.length > 0) {
+      const textOnlyList = spusWithoutImage
+        .map((r, i) => `${i + 1}. SPU: "${r.spu}" | Nome: "${r.name}" (sem imagem de referencia disponivel)`)
+        .join('\n')
+      parts.push({
+        text: `\nPRODUTOS SEM IMAGEM DE REFERENCIA (identificar apenas pelo nome):\n${textOnlyList}\n`
+      })
+    }
+
+    // 4c. Foto do anúncio (a imagem principal a ser analisada)
+    parts.push({
+      text: `\n--- FOTO DO ANUNCIO A SER ANALISADA ---`
+    })
+    parts.push({
+      inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
 
-    const productListText = Array.from(spuMap.entries())
-      .map(([spu, name], i) => `${i + 1}. SPU: "${spu}" | Nome/Categoria: "${name}"`)
-      .join('\n')
-
+    // 4d. Contexto do título (apenas suporte secundário)
     const titleContext = titleHint
-      ? `\nTITULO COMPLETO DO ANUNCIO: "${titleHint}" - Use como apoio crucial para entender quais itens compoem o kit!`
+      ? `\nTITULO DO ANUNCIO (apenas suporte secundario): "${titleHint}"`
       : ''
 
-    const prompt = `Voce e um especialista em identificacao visual detalhada de produtos de moda (calcados, cintos, carteiras, relogios, fones de ouvido, meias e acessorios).
+    // 4e. Instruções do prompt (100% genérico, sem nenhum SPU hardcoded)
+    parts.push({
+      text: `${titleContext}
 
-Analise PRIMEIRO E COM PRIORIDADE MAXIMA A IMAGEM FORNECIDA. A IMAGEM E A AUTORIDADE FINAL DA DECISAO.
-Analise a forma visual, o formato, o tipo de display, as cores e as caracteristicas fisicas de CADA produto contido na foto.
+INSTRUCOES:
+Voce e um especialista em identificacao visual de produtos. Sua tarefa e comparar a FOTO DO ANUNCIO com as IMAGENS DE REFERENCIA dos produtos do armazem.
 
-LISTA DE PRODUTOS/SPUs DO ARMAZEM DO CLIENTE:
-${productListText}
-${titleContext}
+1. Examine CADA item visualmente presente na foto do anuncio.
+2. Para cada item, compare VISUALMENTE com as imagens de referencia fornecidas acima.
+3. A COMPARACAO VISUAL E A AUTORIDADE FINAL. Considere:
+   - Formato/silhueta do produto (quadrado vs oval vs redondo vs retangular)
+   - Tipo de display (LED digital vs ponteiros fisicos vs sem display)
+   - Material e textura visual (metal vs silicone vs couro)
+   - Proporcoes (largo vs estreito, grosso vs fino)
+4. Se um item da foto do anuncio corresponder visualmente a um produto de referencia, retorne o SPU desse produto.
+5. Se um item da foto do anuncio NAO corresponder visualmente a NENHUM dos produtos de referencia (nem os com imagem nem os sem imagem), retorne "UNMAPPED_[descricao curta do item em ingles]".
+   Exemplos: UNMAPPED_NARROW_DIGITAL_WATCH, UNMAPPED_LEATHER_WALLET, UNMAPPED_SUNGLASSES
+6. NAO force correspondencias. Se o formato visual e diferente, e um item diferente mesmo que a categoria seja similar.
 
-INSTRUCOES CRUCIAIS DE IDENTIFICACAO VISUAL DE RELOGIOS E ACESSORIOS:
-Existem 3 TIPOS DISTINTOS DE RELOGIOS na linha de produtos:
-
-1. RELOGIO DIGITAL QUADRADO (Display LED amplo, caixa quadrada/retangular, digitos LED grandes de hora, estilo smartwatch quadrado):
-   - Se a foto mostrar esse relogio digital quadrado: O SPU correto no armazem e "V20" (ou SPU correspondente a relogio digital quadrado).
-   - Se o SPU "V20" estiver na lista do armazem, RETORNE "V20".
-   - NUNCA retorne R40 (analogico) para este relogio!
-
-2. RELOGIO DIGITAL FINO / SMARTBAND OVAL (Visor LED estreito e oval na vertical, capsula fina com pulseira estreita, botao circular na parte inferior da tela):
-   - ATENCAO CRUCIAL: Este modelo de relogio digital fino NAO ESTA CADASTRADO NO ARMAZEM DO SISTEMA!
-   - Se a foto mostrar este relogio digital fino/smartband oval, VOCE DEVE OBRIGATORIAMENTE RETORNAR "UNMAPPED_NARROW_DIGITAL_WATCH".
-   - NUNCA retorne R40 nem V20 para o relogio digital fino!
-
-3. RELOGIO ANALOGICO DE PONTEIROS (Caixa redonda tradicional, mostrador fisico com ponteiros de horas/minutos/segundos):
-   - O SPU correto no armazem e "R40" (ou SPU de relogio analogico).
-   - Se a foto mostrar relogio analogico de ponteiros e R40 estiver no armazem, RETORNE "R40".
-
-4. Para cada produto da foto que possuir um correspondente exato no armazem (tenis, fones i12, cinto V10, etc), inclua o SPU da lista do armazem.
-5. Responda SOMENTE com os SPUs identificados da lista do armazem ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400 ou SPU1, UNMAPPED_NARROW_DIGITAL_WATCH
+Responda SOMENTE com os SPUs identificados e/ou itens UNMAPPED, separados por virgula.
+Exemplo de resposta: SPU1, SPU2, UNMAPPED_ITEM_NAME
 
 RESPOSTA:`
+    })
 
+    // 5. Chamar Gemini 2.0 Flash
     const ai = new GoogleGenAI({ apiKey })
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
-      contents: [
-        {
-          parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
-            { text: prompt }
-          ]
-        }
-      ]
+      contents: [{ parts }]
     })
 
     const rawText = (response.text || '').trim()
 
-    // Parsear SPUs reconhecidos da resposta
+    // 6. Parsear resposta — lógica simplificada sem regex hardcoded
     const mentionedSpus: string[] = []
     const unmappedItems: string[] = []
 
@@ -146,35 +196,24 @@ RESPOSTA:`
 
     for (const token of rawTokens) {
       const normToken = token.toUpperCase()
-      if (normToken.includes('UNMAPPED_NARROW') || normToken.includes('NARROW_DIGITAL') || normToken.includes('DIGITAL_FINO')) {
-        unmappedItems.push('Relógio Digital Fino (Smartband Oval)')
-        continue
-      }
-      if (normToken.includes('UNMAPPED') || normToken.includes('DIGITAL_WATCH') || normToken.includes('RELOGIO_DIGITAL')) {
-        unmappedItems.push('Relógio Digital')
-        continue
-      }
-      if (normToken.includes('ANALOG_WATCH') || normToken.includes('RELOGIO_ANALOGICO')) {
-        unmappedItems.push('Relógio Analógico')
+
+      // Detectar itens UNMAPPED
+      if (normToken.startsWith('UNMAPPED')) {
+        // Converter UNMAPPED_NARROW_DIGITAL_WATCH -> "Narrow Digital Watch"
+        const description = token
+          .replace(/^UNMAPPED[_-]?/i, '')
+          .replace(/_/g, ' ')
+          .trim()
+        unmappedItems.push(description || 'Item Não Identificado')
         continue
       }
 
+      // Tentar match direto com SPUs do armazém
       const matched = warehouseProducts.find(p => {
-        const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, ' ')
-        const pNormName = (p.product_name || '').toUpperCase().replace(/\s+/g, ' ')
-        
-        // Bloquear conflito entre Digital e Analógico
-        const tokenIsDigital = /DIGITAL|SMARTBAND|LED/.test(normToken)
-        const tokenIsAnalog = /ANALOGIC|ANALÓGIC|PONTEIRO/.test(normToken)
-        const prodIsDigital = /DIGITAL|SMARTBAND|LED/.test(pNormName) || /DIGITAL|SMARTBAND|LED/.test(pNormSpu)
-        const prodIsAnalog = /ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormName) || /ANALOGIC|ANALÓGIC|PONTEIRO/.test(pNormSpu)
-
-        if ((tokenIsDigital && prodIsAnalog) || (tokenIsAnalog && prodIsDigital)) {
-          return false
-        }
-
+        const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, ' ').trim()
         return pNormSpu === normToken ||
                pNormSpu === normToken.replace(/\s+/g, '-') ||
+               normToken === pNormSpu.replace(/\s+/g, '-') ||
                pNormSpu.includes(normToken) ||
                normToken.includes(pNormSpu)
       })
@@ -205,4 +244,3 @@ RESPOSTA:`
     } as VisionIdentifyResponse, { status: 200 })
   }
 }
-
