@@ -8,6 +8,9 @@ function ConviteInvalidoContent() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const desc = searchParams.get('desc')
+  const type = searchParams.get('type')
+
+  const isRecovery = type === 'recovery' || (desc && desc.toLowerCase().includes('email link'))
 
   return (
     <div className="auth-card" style={{ textAlign: 'center', padding: '3rem 2rem' }}>
@@ -23,10 +26,12 @@ function ConviteInvalidoContent() {
       {/* Cabeçalho */}
       <div className="auth-header" style={{ marginBottom: '2rem' }}>
         <h1 className="auth-title" style={{ fontSize: '1.5rem', fontWeight: 700 }}>
-          Convite Inválido ou Expirado
+          {isRecovery ? 'Link Expirado ou Já Utilizado' : 'Convite Inválido ou Expirado'}
         </h1>
         <p className="auth-subtitle" style={{ fontSize: '0.9375rem', lineHeight: '1.6', marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
-          Este link de convite não é mais válido. Ele pode ter sido utilizado, expirado após o tempo limite ou cancelado pelo administrador do sistema.
+          {isRecovery
+            ? 'Este link de uso único expirou ou foi pré-carregado pelo navegador/aplicativo de mensagens. Você pode solicitar um novo código numérico ou tentar novamente.'
+            : 'Este link de convite não é mais válido. Ele pode ter sido utilizado, expirado após o tempo limite ou cancelado pelo administrador do sistema.'}
         </p>
 
         {(error || desc) && (
@@ -47,10 +52,17 @@ function ConviteInvalidoContent() {
         )}
       </div>
 
-      {/* Ação */}
-      <Link href="/login" className="btn-primary" style={{ textDecoration: 'none', marginTop: '1rem' }}>
-        Voltar para a Tela de Login
-      </Link>
+      {/* Ações */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {isRecovery && (
+          <Link href="/esqueci-senha" className="btn-primary" style={{ textDecoration: 'none' }}>
+            🔑 Solicitar Novo Código / Link de Redefinição
+          </Link>
+        )}
+        <Link href="/login" className="auth-link" style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+          Voltar para a Tela de Login
+        </Link>
+      </div>
     </div>
   )
 }

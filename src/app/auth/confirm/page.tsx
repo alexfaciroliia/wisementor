@@ -117,13 +117,17 @@ export default function AuthConfirmPage() {
       // 3. Verificar se já existe uma sessão ativa (caso o Supabase client já tenha processado)
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
+        if (queryType === 'recovery' || searchParams.get('next') === '/redefinir-senha') {
+          router.replace('/redefinir-senha')
+          return
+        }
         router.replace('/completar-cadastro')
         return
       }
 
-      // Nenhum token encontrado — convite inválido
-      const redirectUrl = `/auth/convite-invalido?error=${encodeURIComponent(errorParam)}&desc=${encodeURIComponent(errorDesc)}`
-      console.log('Redirecting to invalid invite page:', redirectUrl)
+      // Nenhum token encontrado ou token consumido / expirado
+      const redirectUrl = `/auth/convite-invalido?type=${encodeURIComponent(queryType || '')}&error=${encodeURIComponent(errorParam)}&desc=${encodeURIComponent(errorDesc)}`
+      console.log('Redirecting to invalid invite/recovery page:', redirectUrl)
       router.replace(redirectUrl)
     }
 
