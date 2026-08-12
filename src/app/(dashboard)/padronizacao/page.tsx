@@ -2,7 +2,20 @@
 
 import { useState } from 'react'
 import * as XLSX from 'xlsx'
-import { processMarketplaceListingsWithVision, ParseMarketplaceResult, MarketplaceListingRow, GeneratedKitRow, ProcessedListingResult, VisionProcessingLog, WarehouseProductItem, UnreconciledListingItem, orderKitSpus, findExactWarehouseSku, checkWarehouseColorSizeReconciliation } from '@/lib/excel/planilha_marketplace_parser'
+import {
+  processMarketplaceListingsWithVision,
+  ParseMarketplaceResult,
+  MarketplaceListingRow,
+  GeneratedKitRow,
+  ProcessedListingResult,
+  VisionProcessingLog,
+  WarehouseProductItem,
+  ErrorCenterKitItem,
+  orderKitSpus,
+  findExactWarehouseSku,
+  checkWarehouseColorSizeReconciliation,
+  buildKitRowsForListing
+} from '@/lib/excel/planilha_marketplace_parser'
 import { removeAccentsAndCedilla } from '@/lib/excel/planilha1_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
 import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules, ClientCategoryRule } from '@/lib/services/product_service'
@@ -18,7 +31,7 @@ export default function PadronizacaoPage() {
   const [processing, setProcessing] = useState(false)
   const [resultData, setResultData] = useState<ParseMarketplaceResult | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'unreconciled' | 'errors' | 'vision'>('kits')
+  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
   const [visionProgress, setVisionProgress] = useState<{ current: number; total: number; listingId: string } | null>(null)
   const [visionLogs, setVisionLogs] = useState<VisionProcessingLog[]>([])
@@ -27,86 +40,17 @@ export default function PadronizacaoPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [hoveredImg, setHoveredImg] = useState<{ url: string; x: number; y: number } | null>(null)
   const [modalImg, setModalImg] = useState<string | null>(null)
-  const [selectedDePara, setSelectedDePara] = useState<{ [key: string]: string }>({})
+  
+  // Mapeamento de De-para de cores e produtos manuais por anúncio
+  const [selectedDePara, setSelectedDePara] = useState<{ [listingId: string]: string }>({})
+  const [customKitSpus, setCustomKitSpus] = useState<{ [listingId: string]: string[] }>({})
+  const [warehouseSearchPerListing, setWarehouseSearchPerListing] = useState<{ [listingId: string]: string }>({})
+
   const [currentWarehouseProducts, setCurrentWarehouseProducts] = useState<WarehouseProductItem[]>([])
   const [currentCategoryRules, setCurrentCategoryRules] = useState<ClientCategoryRule[]>([])
+  const [showAuditLogs, setShowAuditLogs] = useState(false)
 
-  // Aplicar De-para para um anúncio da aba Ajustes e movê-lo para Formação dos Kits
-  function handleApplyDePara(item: UnreconciledListingItem) {
-    if (!resultData) return
-    const chosenColor = selectedDePara[item.listingId] || item.availableColorsInWarehouse[0] || item.importedColor
-
-    const updatedRows: GeneratedKitRow[] = []
-    const cleanTitle = item.title.replace(/\s+/g, ' ').trim()
-
-    // 1. Usar a lista completa de componentes do kit (ex: ["i12", "R40", "LC-400"]) e ordenar com regras reais do armazém
-    const spus = item.componentSPUs && item.componentSPUs.length > 0 ? item.componentSPUs : [item.spu]
-    const spuPart = orderKitSpus(spus, currentWarehouseProducts, currentCategoryRules)
-
-    for (const variationRow of item.rows) {
-      const rowCorRaw = (variationRow.colorRaw || '').trim()
-      const rawTam = (variationRow.sizeRaw || 'U').trim()
-      const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
-
-      // Verificar se a cor original desta linha (ex: PRETO ou AZUL MARINHO) já bate com o armazém.
-      // Apenas a cor não conciliada (ex: MARINHO) usará a cor escolhida no de-para.
-      const checkRes = checkWarehouseColorSizeReconciliation(item.spu, rowCorRaw, tam, currentWarehouseProducts)
-      const rowColor = checkRes.isReconciled && checkRes.matchedColor ? checkRes.matchedColor : chosenColor
-
-      const cleanCor = removeAccentsAndCedilla(rowColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
-      const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
-
-      let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
-      if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
-
-      const imgForRow = (variationRow.imageUrl || item.imageUrl || '').trim()
-
-      // 2. Gerar uma linha para CADA componente SPU do kit cruzando a cor correta da variação
-      for (const compSpu of spus) {
-        const officialWarehouseSku = findExactWarehouseSku(compSpu, rowColor, tam, currentWarehouseProducts)
-
-        const kitRow: GeneratedKitRow = {
-          kitSku,
-          title: cleanTitle,
-          imageUrl: imgForRow,
-          sku: officialWarehouseSku,
-          skuQty: 1
-        }
-        updatedRows.push(kitRow)
-      }
-    }
-
-    setResultData(prev => {
-      if (!prev) return prev
-      const newKitsRows = [...prev.kitsRows, ...updatedRows]
-      const newUnreconciled = (prev.unreconciledItems || []).filter(u => u.listingId !== item.listingId)
-      const newAllListings = prev.allListings.map(l => {
-        if (l.listingId === item.listingId) {
-          return {
-            ...l,
-            listingStatus: 'standardized' as const,
-            kitSku: updatedRows[0]?.kitSku,
-            generatedKitRows: updatedRows
-          }
-        }
-        return l
-      })
-
-      return {
-        ...prev,
-        kitsRows: newKitsRows,
-        allListings: newAllListings,
-        unreconciledItems: newUnreconciled
-      }
-    })
-
-    setMessage({
-      type: 'success',
-      text: `De-para de cor aplicado com sucesso para o anúncio ${item.listingId}! Kit SKU '${updatedRows[0]?.kitSku}' movido para a Formação dos Kits.`
-    })
-  }
-
-  // Processar padronização de SKUs e formação de kits (Prompt 2)
+  // 1. Processar padronização de SKUs e formação de kits através de fotos
   async function handleProcessMarketplaceSheet() {
     if (!selectedClientId) {
       setMessage({ type: 'error', text: 'Selecione um cliente ativo no menu lateral.' })
@@ -134,7 +78,7 @@ export default function PadronizacaoPage() {
       if (warehouseProducts.length === 0) {
         setMessage({
           type: 'warning',
-          text: `Atenção: Nenhum produto cadastrado no armazém do Supabase${targetSpu ? ` para o SPU '${targetSpu}'` : ''}. Cadastre primeiro via Planilha 1.`
+          text: `Atenção: Nenhum produto cadastrado no armazém do Supabase${targetSpu ? ` para o SPU '${targetSpu}'` : ''}. Cadastre primeiro via Ingestão (Planilha 1).`
         })
       }
 
@@ -151,7 +95,7 @@ export default function PadronizacaoPage() {
         return
       }
 
-      // Detectar cabeçalhos dinamicamente com mapeamento para planilha real do UpSeller
+      // Detectar cabeçalhos dinamicamente
       const headers = rawRows[0].map(h => String(h || '').trim())
       const headersLower = headers.map(h => h.toLowerCase())
 
@@ -160,13 +104,6 @@ export default function PadronizacaoPage() {
         return idx
       }
 
-      // Mapeamento específico para a exportação real do UpSeller
-      // Colunas conhecidas na planilha UpSeller exportada:
-      //   [4] E = ID do Anúncios
-      //   [6] G = Título
-      //   [32] AG = Opção por Variante1 (normalmente Cor)
-      //   [34] AI = Opção por Variante2 (normalmente Tamanho)
-      //   [41] AP = Imagem da Variante1
       let colId = findColIndex(['id do anúncios', 'id do anuncio', 'item id', 'id anúncio'])
       let colTitle = findColIndex(['título', 'titulo', 'nome do anúncio', 'title'])
       let colVariant1Name = findColIndex(['nome variante1', 'nome variante 1'])
@@ -176,7 +113,6 @@ export default function PadronizacaoPage() {
       let colImg = findColIndex(['imagem da variante1', 'imagem variante1', 'url foto principal', 'foto principal'])
       let colStatus = findColIndex(['status', 'situação'])
 
-      // Fallbacks para os índices fixos da planilha padrão UpSeller
       if (colId === -1)          colId = 4
       if (colTitle === -1)       colTitle = 6
       if (colVariant1Name === -1) colVariant1Name = 31
@@ -196,7 +132,6 @@ export default function PadronizacaoPage() {
         const idVal = String(row[colId] || `ROW-${r + 1}`).trim()
         const photoUrlVal = String(row[colImg] || '').trim()
 
-        // Detectar qual variante é Cor e qual é Tamanho pelo nome da coluna
         const v1Name = String(row[colVariant1Name] || '').toLowerCase()
         const v2Name = String(row[colVariant2Name] || '').toLowerCase()
         let colorRaw: string | undefined
@@ -209,7 +144,6 @@ export default function PadronizacaoPage() {
           sizeRaw = String(row[colVariant1Val] || '').trim() || undefined
           colorRaw = String(row[colVariant2Val] || '').trim() || undefined
         } else {
-          // Fallback: Variante1 = Cor, Variante2 = Tamanho
           colorRaw = String(row[colVariant1Val] || '').trim() || undefined
           sizeRaw = String(row[colVariant2Val] || '').trim() || undefined
         }
@@ -226,7 +160,6 @@ export default function PadronizacaoPage() {
         })
       }
 
-      // 4. Executar Motor de Padronização com Vision AI como critério primário
       // Função Vision que chama a API /api/vision/identify-kit
       const visionFn = async (imageUrl: string, products: WarehouseProductItem[], titleHint?: string) => {
         try {
@@ -235,14 +168,15 @@ export default function PadronizacaoPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ imageUrl, warehouseProducts: products, titleHint })
           })
-          if (!res.ok) return { identifiedSpus: [] }
+          if (!res.ok) return { identifiedSpus: [], totalItemsInPhoto: 0 }
           const data = await res.json()
           return {
             identifiedSpus: data.identifiedSpus || [],
-            unmappedItems: data.unmappedItems || []
+            unmappedItems: data.unmappedItems || [],
+            totalItemsInPhoto: data.totalItemsInPhoto || (data.identifiedSpus?.length || 0)
           }
         } catch {
-          return { identifiedSpus: [] }
+          return { identifiedSpus: [], totalItemsInPhoto: 0 }
         }
       }
 
@@ -262,10 +196,24 @@ export default function PadronizacaoPage() {
       setVisionLogs(res.visionLogs || [])
       setVisionProgress(null)
 
+      // Inicializar customKitSpus com os SPUs identificados inicialmente de cada item de erro
+      const initialCustomSpus: { [listingId: string]: string[] } = {}
+      if (res.errorCenterKits) {
+        for (const item of res.errorCenterKits) {
+          initialCustomSpus[item.listingId] = [...item.identifiedSpus]
+        }
+      }
+      setCustomKitSpus(initialCustomSpus)
+
       setResultData(res)
+
+      const kitsGenerated = res.kitsRows.length
+      const errorCount = res.errorCenterKits?.length || 0
+      const conjuntosCount = res.allListings.filter(l => l.listingStatus === 'ignored_conjunto').length
+
       setMessage({
-        type: 'success',
-        text: `Processamento concluído! ${res.allListings.filter(l => l.detectedType === 'kit').length} anúncios de Kit identificados → ${res.kitsRows.length} linhas geradas. ${res.allListings.filter(l => l.listingStatus === 'standardized' && l.detectedType === 'simple').length} simples | ${conjuntosList.length} Pendentes/Conjuntos.`
+        type: errorCount > 0 ? 'warning' : 'success',
+        text: `Processamento concluído! ${kitsGenerated} linhas de kits formadas automaticamente. ${errorCount} anúncio(s) na Central de Erros necessitando conferência/ajuste manual. ${conjuntosCount} anúncio(s) de Conjunto preservados como Pendentes.`
       })
 
     } catch (err: any) {
@@ -276,7 +224,167 @@ export default function PadronizacaoPage() {
     }
   }
 
-  // Baixar arquivo Excel de Kits para UpSeller (Planilha 5)
+  // 2. Enviar manualmente um Kit da aba Formação dos Kits para a Central de Erros
+  function handleSendToErrorCenter(listingId: string) {
+    if (!resultData) return
+
+    const listing = resultData.allListings.find(l => l.listingId === listingId)
+    if (!listing) return
+
+    // 1. Extrair SPUs previamente usados
+    const usedSpus: string[] = []
+    for (const r of listing.generatedKitRows) {
+      const match = currentWarehouseProducts.find(p => p.sku === r.sku || (p.spu && r.sku.startsWith(p.spu)))
+      if (match && !usedSpus.includes(match.spu.toUpperCase())) {
+        usedSpus.push(match.spu.toUpperCase())
+      }
+    }
+
+    // 2. Criar item na Central de Erros
+    const errorItem: ErrorCenterKitItem = {
+      listingId: listing.listingId,
+      title: listing.title,
+      cleanTitle: listing.cleanTitle,
+      imageUrl: listing.generatedKitRows[0]?.imageUrl || '',
+      statusMarketplace: listing.statusMarketplace || 'ativo',
+      rows: (listing as any).rawRows || [
+        {
+          rowIdx: 1,
+          listingId: listing.listingId,
+          title: listing.title,
+          status: listing.statusMarketplace || 'ativo',
+          imageUrl: listing.generatedKitRows[0]?.imageUrl || ''
+        }
+      ],
+      identifiedSpus: usedSpus,
+      errorReason: 'manual_review',
+      errorMessage: 'Kit enviado manualmente para a Central de Erros para revisão e identificação correta de produtos.',
+      importedColors: [],
+      importedSizes: [],
+      availableColorsInWarehouse: Array.from(new Set(currentWarehouseProducts.map(p => p.color).filter(Boolean))),
+      availableSizesInWarehouse: Array.from(new Set(currentWarehouseProducts.map(p => p.size).filter(Boolean)))
+    }
+
+    // 3. Remover linhas de kitsRows e atualizar status da listagem
+    setResultData(prev => {
+      if (!prev) return prev
+      const newKitsRows = prev.kitsRows.filter(r => !listing.generatedKitRows.some(g => g.kitSku === r.kitSku && g.sku === r.sku && g.title === r.title))
+      const newAllListings = prev.allListings.map(l => {
+        if (l.listingId === listingId) {
+          return {
+            ...l,
+            listingStatus: 'blocked_error' as const,
+            generatedKitRows: []
+          }
+        }
+        return l
+      })
+
+      const newErrorCenterKits = [...(prev.errorCenterKits || []).filter(e => e.listingId !== listingId), errorItem]
+
+      return {
+        ...prev,
+        kitsRows: newKitsRows,
+        allListings: newAllListings,
+        errorCenterKits: newErrorCenterKits
+      }
+    })
+
+    setCustomKitSpus(prev => ({
+      ...prev,
+      [listingId]: usedSpus
+    }))
+
+    setMessage({
+      type: 'warning',
+      text: `O anúncio "${listingId}" foi movido para a Central de Erros. Você pode selecionar manualmente os produtos correspondentes do armazém Supabase.`
+    })
+  }
+
+  // 3. Adicionar SPU do Armazém ao Kit na Central de Erros
+  function handleAddSpuToErrorKit(listingId: string, spu: string) {
+    const cleanSpu = spu.trim().toUpperCase()
+    if (!cleanSpu) return
+
+    setCustomKitSpus(prev => {
+      const current = prev[listingId] || []
+      if (current.includes(cleanSpu)) return prev
+      return {
+        ...prev,
+        [listingId]: [...current, cleanSpu]
+      }
+    })
+  }
+
+  // 4. Remover SPU do Kit na Central de Erros
+  function handleRemoveSpuFromErrorKit(listingId: string, spuToRemove: string) {
+    setCustomKitSpus(prev => {
+      const current = prev[listingId] || []
+      return {
+        ...prev,
+        [listingId]: current.filter(s => s !== spuToRemove)
+      }
+    })
+  }
+
+  // 5. Resolver Anúncio na Central de Erros e Mover de Volta para Formação dos Kits
+  function handleResolveErrorKit(item: ErrorCenterKitItem) {
+    if (!resultData) return
+
+    const selectedSpus = customKitSpus[item.listingId] && customKitSpus[item.listingId].length > 0
+      ? customKitSpus[item.listingId]
+      : item.identifiedSpus
+
+    if (selectedSpus.length === 0) {
+      setMessage({
+        type: 'error',
+        text: `Selecione pelo menos 1 produto do armazém Supabase para compor o kit "${item.listingId}".`
+      })
+      return
+    }
+
+    const chosenColor = selectedDePara[item.listingId] || item.availableColorsInWarehouse[0]
+
+    // Gerar linhas do kit com as regras oficiais
+    const { generatedRows, kitSku } = buildKitRowsForListing(
+      item,
+      selectedSpus,
+      currentWarehouseProducts,
+      currentCategoryRules,
+      chosenColor
+    )
+
+    setResultData(prev => {
+      if (!prev) return prev
+      const newKitsRows = [...prev.kitsRows, ...generatedRows]
+      const newErrorCenterKits = (prev.errorCenterKits || []).filter(e => e.listingId !== item.listingId)
+      const newAllListings = prev.allListings.map(l => {
+        if (l.listingId === item.listingId) {
+          return {
+            ...l,
+            listingStatus: 'standardized' as const,
+            kitSku,
+            generatedKitRows: generatedRows
+          }
+        }
+        return l
+      })
+
+      return {
+        ...prev,
+        kitsRows: newKitsRows,
+        allListings: newAllListings,
+        errorCenterKits: newErrorCenterKits
+      }
+    })
+
+    setMessage({
+      type: 'success',
+      text: `Kit "${kitSku}" (${selectedSpus.join(' + ')}) formado com sucesso! Anúncio movido para a Formação dos Kits.`
+    })
+  }
+
+  // 6. Baixar arquivo Excel de Kits para UpSeller (Planilha 5)
   function downloadKitsExcel() {
     if (!resultData) return
     const buffer = generateKitsExcel(resultData.kitsRows, resultData.errorLogs)
@@ -291,21 +399,27 @@ export default function PadronizacaoPage() {
 
   const kitsCount = resultData?.kitsRows.length || 0
   const conjuntosList = resultData?.allListings.filter(l => l.listingStatus === 'ignored_conjunto') || []
+  const errorCenterKitsList = resultData?.errorCenterKits || []
   const errorLogsList = resultData?.errorLogs || []
 
+  // Lista única de produtos do armazém para pesquisa rápida no seletor
+  const uniqueWarehouseProducts = Array.from(
+    new Map(currentWarehouseProducts.map(p => [p.spu.toUpperCase(), p])).values()
+  )
+
   return (
-    <div className="page-container" style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="page-container" style={{ padding: '2rem', maxWidth: '1440px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>
-          🎯 Mapeamento & Padronização de SKUs dos Marketplaces (Prompt 2)
+          🎯 Padronização & Formação de Kits (UpSeller)
         </h1>
-        <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
-          Importe as planilhas de anúncios do Mercado Livre/Marketplaces do UpSeller. O sistema localizará os SKUs oficiais no armazém do Supabase, formará os Kits (`KIT2-SPU-CORES-TAMANHO`), consolidará as quantidades e preservará anúncios de "Conjunto" como Pendentes.
+        <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem', lineHeight: '1.5' }}>
+          Importe a planilha de anúncios dos marketplaces exportada do UpSeller. O sistema compara as fotos dos anúncios estritamente com as fotos dos produtos cadastrados no armazém do Supabase. Kits com identificação completa têm seus SKUs montados e vão para <strong>Formação dos Kits</strong>; kits com produtos faltantes ou divergentes vão para a <strong>Central de Erros</strong> para resolução interativa.
         </p>
       </div>
 
-      {/* Formulário de Configurações */}
+      {/* Card de Configurações e Ingestão */}
       <div className="card" style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
           
@@ -347,14 +461,14 @@ export default function PadronizacaoPage() {
             </select>
           </div>
 
-          {/* SPU Oficial do Armazém */}
+          {/* SPU Oficial do Armazém (Opcional) */}
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-              SPU Oficial do Produto no Armazém (Opcional):
+              SPU Específico no Armazém (Opcional):
             </label>
             <input
               type="text"
-              placeholder="Ex: AN-SAIDA-CALCA FAIXA (Deixe em branco para buscar todos)"
+              placeholder="Ex: i12 (Deixe em branco para carregar todos)"
               value={targetSpu}
               onChange={e => setTargetSpu(e.target.value)}
               style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff' }}
@@ -390,18 +504,19 @@ export default function PadronizacaoPage() {
               cursor: processing ? 'wait' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem'
+              gap: '0.5rem',
+              boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.3)'
             }}
           >
-            {processing ? 'Processando...' : '⚡ Processar Padronização & Formar Kits'}
+            {processing ? 'Comparando fotos com armazém...' : '⚡ Processar Padronização & Formar Kits'}
           </button>
 
-          {/* Indicador de progresso Vision AI */}
+          {/* Indicador de progresso */}
           {visionProgress && processing && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 1rem', borderRadius: '8px', background: '#0f172a', border: '1px solid #7c3aed' }}>
               <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid #7c3aed', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
               <span style={{ color: '#a78bfa', fontSize: '0.85rem', fontWeight: 600 }}>
-                🧠 Vision AI: analisando kit {visionProgress.current}/{visionProgress.total}
+                🔍 Analisando kit {visionProgress.current}/{visionProgress.total}
               </span>
               {visionProgress.listingId && (
                 <span style={{ color: '#64748b', fontSize: '0.75rem', fontFamily: 'monospace' }}>{visionProgress.listingId}</span>
@@ -414,43 +529,77 @@ export default function PadronizacaoPage() {
       {/* Alerta de Mensagem */}
       {message && (
         <div style={{
-          padding: '1rem',
+          padding: '1rem 1.25rem',
           borderRadius: '8px',
           marginBottom: '1.5rem',
           background: message.type === 'success' ? '#064e3b' : message.type === 'warning' ? '#78350f' : '#7f1d1d',
           color: message.type === 'success' ? '#6ee7b7' : message.type === 'warning' ? '#fde68a' : '#fca5a5',
-          border: `1px solid ${message.type === 'success' ? '#059669' : message.type === 'warning' ? '#d97706' : '#dc2626'}`
+          border: `1px solid ${message.type === 'success' ? '#059669' : message.type === 'warning' ? '#d97706' : '#dc2626'}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
         }}>
-          {message.text}
+          <span>{message.text}</span>
+          <button onClick={() => setMessage(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
 
-      {/* Resultados */}
+      {/* Resultados e Navegação */}
       {resultData && (
         <>
-          {/* Card de Estatísticas */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
-            <div style={{ background: '#1e293b', padding: '1.25rem', borderRadius: '10px', border: '1px solid #059669' }}>
-              <span style={{ fontSize: '0.8rem', color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Linhas de Kits Geradas</span>
+          {/* Cards de Métricas */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+            <div
+              onClick={() => setActiveTab('kits')}
+              style={{
+                background: activeTab === 'kits' ? '#064e3b' : '#1e293b',
+                padding: '1.25rem',
+                borderRadius: '10px',
+                border: '1px solid #059669',
+                cursor: 'pointer',
+                transition: 'transform 0.2s'
+              }}
+            >
+              <span style={{ fontSize: '0.8rem', color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Formação dos Kits</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#34d399', marginTop: '0.25rem' }}>{kitsCount}</div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Aba 'Formação dos Kits'</span>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Linhas prontas para exportação</span>
             </div>
 
-            <div style={{ background: '#1e293b', padding: '1.25rem', borderRadius: '10px', border: '1px solid #d97706' }}>
-              <span style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Anúncios Pendentes (Conjuntos)</span>
+            <div
+              onClick={() => setActiveTab('conjuntos')}
+              style={{
+                background: activeTab === 'conjuntos' ? '#78350f' : '#1e293b',
+                padding: '1.25rem',
+                borderRadius: '10px',
+                border: '1px solid #d97706',
+                cursor: 'pointer',
+                transition: 'transform 0.2s'
+              }}
+            >
+              <span style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Pendentes (Conjuntos)</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#fbbf24', marginTop: '0.25rem' }}>{conjuntosList.length}</div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Preservados sem alterar SKU</span>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Preservados sem alteração de SKU</span>
             </div>
 
-            <div style={{ background: '#1e293b', padding: '1.25rem', borderRadius: '10px', border: '1px solid #dc2626' }}>
-              <span style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Erros & Ocorrências</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f87171', marginTop: '0.25rem' }}>{errorLogsList.length}</div>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Exportados na aba 'Erros'</span>
+            <div
+              onClick={() => setActiveTab('errors')}
+              style={{
+                background: activeTab === 'errors' ? '#7f1d1d' : '#1e293b',
+                padding: '1.25rem',
+                borderRadius: '10px',
+                border: '1px solid #dc2626',
+                cursor: 'pointer',
+                transition: 'transform 0.2s'
+              }}
+            >
+              <span style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Central de Erros</span>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f87171', marginTop: '0.25rem' }}>{errorCenterKitsList.length}</div>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Kits com produtos faltantes ou divergências</span>
             </div>
           </div>
 
-          {/* Botão de Download da Planilha UpSeller */}
-          <div style={{ marginBottom: '2rem' }}>
+          {/* Download da Planilha Oficial UpSeller */}
+          <div style={{ marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <button
               onClick={downloadKitsExcel}
               disabled={kitsCount === 0}
@@ -465,15 +614,16 @@ export default function PadronizacaoPage() {
                 cursor: kitsCount > 0 ? 'pointer' : 'not-allowed',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.6rem'
+                gap: '0.6rem',
+                boxShadow: kitsCount > 0 ? '0 4px 6px -1px rgba(22, 163, 74, 0.3)' : 'none'
               }}
             >
-              📥 Download Planilha Oficial UpSeller (Formação dos Kits + Aba Erros)
+              📥 Download Planilha Oficial UpSeller ({kitsCount} linhas geradas)
             </button>
           </div>
 
-          {/* Navegação de Abas */}
-          <div style={{ borderBottom: '1px solid #334155', marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
+          {/* Navegação de Abas Unificada */}
+          <div style={{ borderBottom: '1px solid #334155', marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
             <button
               onClick={() => setActiveTab('kits')}
               style={{
@@ -482,11 +632,12 @@ export default function PadronizacaoPage() {
                 border: 'none',
                 borderBottom: activeTab === 'kits' ? '3px solid #34d399' : 'none',
                 color: activeTab === 'kits' ? '#34d399' : '#94a3b8',
-                fontWeight: 600,
+                fontWeight: 700,
+                fontSize: '0.95rem',
                 cursor: 'pointer'
               }}
             >
-              Formação dos Kits ({kitsCount} linhas)
+              📦 Formação dos Kits ({kitsCount} linhas)
             </button>
 
             <button
@@ -497,11 +648,12 @@ export default function PadronizacaoPage() {
                 border: 'none',
                 borderBottom: activeTab === 'conjuntos' ? '3px solid #fbbf24' : 'none',
                 color: activeTab === 'conjuntos' ? '#fbbf24' : '#94a3b8',
-                fontWeight: 600,
+                fontWeight: 700,
+                fontSize: '0.95rem',
                 cursor: 'pointer'
               }}
             >
-              Pendentes / Conjuntos ({conjuntosList.length})
+              ⏳ Pendentes / Conjuntos ({conjuntosList.length})
             </button>
 
             <button
@@ -512,50 +664,24 @@ export default function PadronizacaoPage() {
                 border: 'none',
                 borderBottom: activeTab === 'errors' ? '3px solid #f87171' : 'none',
                 color: activeTab === 'errors' ? '#f87171' : '#94a3b8',
-                fontWeight: 600,
-                cursor: 'pointer'
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
               }}
             >
-              Central de Erros ({errorLogsList.length})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('unreconciled')}
-              style={{
-                padding: '0.75rem 1.25rem',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === 'unreconciled' ? '3px solid #60a5fa' : 'none',
-                color: activeTab === 'unreconciled' ? '#60a5fa' : '#94a3b8',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              🛠️ Ajustes de De-para ({resultData?.unreconciledItems?.length || 0})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('vision')}
-              style={{
-                padding: '0.75rem 1.25rem',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === 'vision' ? '3px solid #a78bfa' : 'none',
-                color: activeTab === 'vision' ? '#a78bfa' : '#94a3b8',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              🧠 Vision AI ({visionLogs.length} kits)
+              🚨 Central de Erros ({errorCenterKitsList.length})
             </button>
           </div>
 
-          {/* Campo de Busca em qualquer parte das colunas */}
+          {/* Campo de Busca Geral */}
           <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <div style={{ position: 'relative', width: '100%', maxWidth: '550px' }}>
               <input
                 type="text"
-                placeholder="🔍 Localizar qualquer termo (ID Anúncio, Kit SKU, Título, SKU Armazém...)"
+                placeholder="🔍 Localizar por ID Anúncio, Kit SKU, Título, SKU Oficial..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 style={{
@@ -599,12 +725,14 @@ export default function PadronizacaoPage() {
             </div>
             {searchTerm && (
               <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                Filtrando resultados por: <strong style={{ color: '#38bdf8' }}>"{searchTerm}"</strong>
+                Filtrando por: <strong style={{ color: '#38bdf8' }}>"{searchTerm}"</strong>
               </span>
             )}
           </div>
 
-          {/* Conteúdo Aba Kits */}
+          {/* ========================================================================= */}
+          {/* ABA 1: FORMAÇÃO DOS KITS */}
+          {/* ========================================================================= */}
           {activeTab === 'kits' && (
             <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', color: '#cbd5e1' }}>
@@ -615,49 +743,79 @@ export default function PadronizacaoPage() {
                     <th style={{ padding: '0.75rem 1rem' }}>Título do Anúncio</th>
                     <th style={{ padding: '0.75rem 1rem' }}>SKU Oficial Armazém</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>SKU Qnt.</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Imagem Kit</th>
+                    <th style={{ padding: '0.75rem 1rem' }}>Foto do Kit</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {resultData.allListings
-                    .filter(listing => listing.detectedType === 'kit' && listing.generatedKitRows.length > 0)
-                    .flatMap(listing =>
-                      listing.generatedKitRows.map((r, idx) => ({ ...r, listingId: listing.listingId, idx }))
-                    )
-                    .filter(r => {
-                      if (!searchTerm.trim()) return true
-                      const norm = searchTerm.trim().toLowerCase()
-                      return [r.listingId, r.kitSku, r.title, r.sku, r.skuQty].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
-                    })
-                    .map((r, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{r.listingId}</td>
-                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', fontWeight: 700, color: '#38bdf8' }}>{r.kitSku}</td>
-                      <td style={{ padding: '0.65rem 1rem' }}>{r.title}</td>
-                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#4ade80' }}>{r.sku}</td>
-                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>{r.skuQty}</td>
-                      <td style={{ padding: '0.65rem 1rem' }}>
-                        {r.imageUrl ? (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); setModalImg(r.imageUrl); }}
-                            onMouseEnter={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
-                            onMouseMove={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
-                            onMouseLeave={() => setHoveredImg(null)}
-                            style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
-                          >
-                            Ver Imagem
-                          </button>
-                        ) : '-'}
+                  {kitsCount === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                        Nenhum kit formado ainda. Verifique a Central de Erros ou importe uma planilha com fotos idênticas ao armazém.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    resultData.allListings
+                      .filter(listing => listing.detectedType === 'kit' && listing.generatedKitRows.length > 0)
+                      .flatMap(listing =>
+                        listing.generatedKitRows.map((r, idx) => ({ ...r, listingId: listing.listingId, isFirstOfListing: idx === 0, countOfListing: listing.generatedKitRows.length }))
+                      )
+                      .filter(r => {
+                        if (!searchTerm.trim()) return true
+                        const norm = searchTerm.trim().toLowerCase()
+                        return [r.listingId, r.kitSku, r.title, r.sku, r.skuQty].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                      })
+                      .map((r, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #1e293b', background: idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                        <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{r.listingId}</td>
+                        <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', fontWeight: 700, color: '#38bdf8' }}>{r.kitSku}</td>
+                        <td style={{ padding: '0.65rem 1rem', maxWidth: '300px' }}>{r.title}</td>
+                        <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#4ade80', fontWeight: 600 }}>{r.sku}</td>
+                        <td style={{ padding: '0.65rem 1rem', textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>{r.skuQty}</td>
+                        <td style={{ padding: '0.65rem 1rem' }}>
+                          {r.imageUrl ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); setModalImg(r.imageUrl); }}
+                              onMouseEnter={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                              onMouseMove={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                              onMouseLeave={() => setHoveredImg(null)}
+                              style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                            >
+                              Ver Foto
+                            </button>
+                          ) : '-'}
+                        </td>
+                        <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSendToErrorCenter(r.listingId)}
+                            style={{
+                              padding: '0.4rem 0.8rem',
+                              borderRadius: '6px',
+                              background: '#7f1d1d',
+                              border: '1px solid #dc2626',
+                              color: '#fca5a5',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer'
+                            }}
+                            title="Enviar este anúncio para a Central de Erros para selecionar manualmente os produtos"
+                          >
+                            ⚠️ Enviar para Central de Erros
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           )}
 
-          {/* Conteúdo Aba Conjuntos */}
+          {/* ========================================================================= */}
+          {/* ABA 2: PENDENTES / CONJUNTOS */}
+          {/* ========================================================================= */}
           {activeTab === 'conjuntos' && (
             <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', color: '#cbd5e1' }}>
@@ -670,128 +828,29 @@ export default function PadronizacaoPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {conjuntosList
-                    .filter(item => {
-                      if (!searchTerm.trim()) return true
-                      const norm = searchTerm.trim().toLowerCase()
-                      return [item.listingId, item.title].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
-                    })
-                    .map((item, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace' }}>{item.listingId}</td>
-                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{item.title}</td>
-                      <td style={{ padding: '0.65rem 1rem' }}>
-                        <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', background: '#78350f', color: '#fde68a', fontWeight: 600, fontSize: '0.75rem' }}>
-                          Pendente (Conjunto)
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>Nenhuma alteração de SKU realizada. Tratar manualmente se necessário.</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Conteúdo Aba Ajustes de De-para */}
-          {activeTab === 'unreconciled' && (
-            <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #3b82f6', padding: '1.25rem' }}>
-              <div style={{ marginBottom: '1rem', color: '#93c5fd', fontSize: '0.875rem', background: '#1e3a8a', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #3b82f6' }}>
-                💡 <strong>Central de Conciliação de Variações (De-para)</strong>: Os anúncios abaixo possuem cores/tamanhos na planilha importada que não têm correspondência exata cadastrada no armazém Supabase. Selecione a variação correta para mover o anúncio para a <strong>Formação dos Kits</strong>.
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', color: '#cbd5e1' }}>
-                <thead>
-                  <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                    <th style={{ padding: '0.75rem 1rem', color: '#94a3b8', fontSize: '0.8rem' }}>ID Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Título do Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>SPU Armazém</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Cor da Planilha Importada</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Cor no Armazém Supabase (De-para)</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Imagem Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Ação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!resultData?.unreconciledItems || resultData.unreconciledItems.length === 0 ? (
+                  {conjuntosList.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.95rem' }}>
-                        🎉 Nenhum ajuste pendente! Todos os anúncios estão 100% conciliados com o armazém do Supabase.
+                      <td colSpan={4} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
+                        Nenhum anúncio de conjunto identificado.
                       </td>
                     </tr>
                   ) : (
-                    resultData.unreconciledItems
+                    conjuntosList
                       .filter(item => {
                         if (!searchTerm.trim()) return true
                         const norm = searchTerm.trim().toLowerCase()
-                        return [item.listingId, item.title, item.spu, item.importedColor, item.availableColorsInWarehouse.join(' ')].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                        return [item.listingId, item.title].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
                       })
                       .map((item, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                        <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{item.listingId}</td>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>{item.title}</td>
-                        <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', color: '#38bdf8' }}>{item.spu}</td>
-                        <td style={{ padding: '0.75rem 1rem', fontWeight: 700 }}>
-                          <span style={{ background: '#78350f', color: '#fde047', padding: '0.3rem 0.75rem', borderRadius: '6px', border: '1px solid #d97706', fontSize: '0.85rem' }}>
-                            {item.importedColor}
+                        <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace' }}>{item.listingId}</td>
+                        <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{item.title}</td>
+                        <td style={{ padding: '0.65rem 1rem' }}>
+                          <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', background: '#78350f', color: '#fde68a', fontWeight: 600, fontSize: '0.75rem' }}>
+                            Pendente (Conjunto)
                           </span>
                         </td>
-                        <td style={{ padding: '0.75rem 1rem' }}>
-                          <select
-                            value={selectedDePara[item.listingId] || item.availableColorsInWarehouse[0] || ''}
-                            onChange={e => setSelectedDePara({ ...selectedDePara, [item.listingId]: e.target.value })}
-                            style={{
-                              padding: '0.55rem 0.85rem',
-                              borderRadius: '6px',
-                              background: '#1a1e2e',
-                              border: '1px solid #3b82f6',
-                              color: '#4ade80',
-                              fontWeight: 700,
-                              outline: 'none',
-                              width: '100%',
-                              maxWidth: '240px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {item.availableColorsInWarehouse.map((c, cIdx) => (
-                              <option key={cIdx} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem' }}>
-                          {item.imageUrl ? (
-                            <button
-                              type="button"
-                              onClick={(evt) => { evt.preventDefault(); setModalImg(item.imageUrl); }}
-                              onMouseEnter={(evt) => setHoveredImg({ url: item.imageUrl, x: evt.clientX, y: evt.clientY })}
-                              onMouseMove={(evt) => setHoveredImg({ url: item.imageUrl, x: evt.clientX, y: evt.clientY })}
-                              onMouseLeave={() => setHoveredImg(null)}
-                              style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
-                            >
-                              Ver Imagem
-                            </button>
-                          ) : '-'}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleApplyDePara(item)}
-                            style={{
-                              padding: '0.55rem 1.1rem',
-                              borderRadius: '6px',
-                              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                              border: 'none',
-                              color: '#fff',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              fontSize: '0.8rem',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                            }}
-                          >
-                            ✓ Aplicar De-para & Mover para Kits
-                          </button>
-                        </td>
+                        <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>Preservado sem alteração de SKU. Não forma kit automático.</td>
                       </tr>
                     ))
                   )}
@@ -800,133 +859,387 @@ export default function PadronizacaoPage() {
             </div>
           )}
 
-          {/* Conteúdo Aba Erros */}
+          {/* ========================================================================= */}
+          {/* ABA 3: CENTRAL DE ERROS (UNIFICADA & INTERATIVA) */}
+          {/* ========================================================================= */}
           {activeTab === 'errors' && (
-            <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                <thead>
-                  <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                    <th style={{ padding: '0.75rem 1rem' }}>Tipo</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Linha</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Campo</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Original</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Mensagem de Erro</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Imagem Anúncio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {errorLogsList
-                    .filter(e => {
-                      if (!searchTerm.trim()) return true
-                      const norm = searchTerm.trim().toLowerCase()
-                      return [e.type, e.clientRow, e.productName, e.field, e.originalValue, e.correctedValue, e.message].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
-                    })
-                    .map((e, idx) => {
-                      const imgUrl = e.imageUrl || (e.originalValue && e.originalValue.startsWith('http') ? e.originalValue : null)
-                      return (
-                        <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                          <td style={{ padding: '0.65rem 1rem' }}>
-                            <span style={{
-                              padding: '0.2rem 0.5rem',
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              background: e.type === 'ERRO' ? '#7f1d1d' : '#064e3b',
-                              color: e.type === 'ERRO' ? '#fca5a5' : '#6ee7b7'
-                            }}>
-                              {e.type}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>{e.clientRow}</td>
-                          <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{e.productName}</td>
-                          <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
-                          <td style={{ padding: '0.65rem 1rem', color: '#f87171' }}>{e.originalValue || '-'}</td>
-                          <td style={{ padding: '0.65rem 1rem', color: '#cbd5e1' }}>{e.message}</td>
-                          <td style={{ padding: '0.65rem 1rem' }}>
-                            {imgUrl ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ background: '#1e293b', border: '1px solid #dc2626', borderRadius: '10px', padding: '1rem 1.25rem', color: '#fca5a5', fontSize: '0.9rem' }}>
+                🚨 <strong>Central de Erros & Identificação Manual</strong>: Esta aba lista todos os kits onde o sistema não encontrou correspondência 100% idêntica para todos os produtos da foto, itens que possuem variações pendentes de de-para ou que foram enviados manualmente para correção. Selecione os produtos faltantes diretamente do armazém Supabase para formar o kit.
+              </div>
+
+              {errorCenterKitsList.length === 0 ? (
+                <div style={{ padding: '3.5rem', textAlign: 'center', background: '#131722', borderRadius: '12px', border: '1px solid #059669' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🎉</div>
+                  <h3 style={{ color: '#34d399', fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Nenhum erro pendente!</h3>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Todos os kits foram identificados com correspondência idêntica e estão prontos na aba <strong>Formação dos Kits</strong>.</p>
+                </div>
+              ) : (
+                errorCenterKitsList
+                  .filter(item => {
+                    if (!searchTerm.trim()) return true
+                    const norm = searchTerm.trim().toLowerCase()
+                    return [item.listingId, item.title, item.errorMessage, (customKitSpus[item.listingId] || item.identifiedSpus).join(' ')].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
+                  })
+                  .map((item, idx) => {
+                    const activeSpus = customKitSpus[item.listingId] || item.identifiedSpus || []
+                    const searchForThis = (warehouseSearchPerListing[item.listingId] || '').trim().toLowerCase()
+
+                    const matchingWarehouseProds = uniqueWarehouseProducts.filter(p => {
+                      if (!searchForThis) return true
+                      return p.spu.toLowerCase().includes(searchForThis) ||
+                             (p.product_name || '').toLowerCase().includes(searchForThis) ||
+                             p.sku.toLowerCase().includes(searchForThis)
+                    }).slice(0, 8)
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background: '#131722',
+                          border: '1px solid #334155',
+                          borderRadius: '12px',
+                          padding: '1.5rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1.25rem',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)'
+                        }}
+                      >
+                        {/* Header do Card */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid #1e293b', paddingBottom: '1rem' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#38bdf8', fontSize: '0.95rem' }}>
+                                ID Anúncio: {item.listingId}
+                              </span>
+                              <span style={{
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                background: item.errorReason === 'no_match' ? '#7f1d1d' :
+                                            item.errorReason === 'incomplete_match' ? '#78350f' :
+                                            item.errorReason === 'unmapped_items' ? '#831843' :
+                                            item.errorReason === 'manual_review' ? '#3b0764' : '#1e3a8a',
+                                color: item.errorReason === 'no_match' ? '#fca5a5' :
+                                       item.errorReason === 'incomplete_match' ? '#fde68a' :
+                                       item.errorReason === 'unmapped_items' ? '#fbcfe8' :
+                                       item.errorReason === 'manual_review' ? '#e9d5ff' : '#93c5fd'
+                              }}>
+                                {item.errorReason === 'no_match' ? '🔴 Nenhum Produto Identificado' :
+                                 item.errorReason === 'incomplete_match' ? '🟠 Identificação Parcial' :
+                                 item.errorReason === 'unmapped_items' ? '🟡 Item Não Cadastrado' :
+                                 item.errorReason === 'manual_review' ? '🟣 Revisão Manual' : '🔵 Variação Não Conciliada'}
+                              </span>
+                            </div>
+                            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>
+                              {item.title}
+                            </h3>
+                          </div>
+                        </div>
+
+                        {/* Corpo do Card com 2 colunas: Foto e Resolução */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 220px) 1fr', gap: '1.5rem', alignItems: 'start' }}>
+                          {/* Coluna da Imagem do Anúncio */}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            {item.imageUrl ? (
+                              <div
+                                onClick={() => setModalImg(item.imageUrl)}
+                                style={{
+                                  width: '100%',
+                                  height: '200px',
+                                  background: '#fff',
+                                  borderRadius: '8px',
+                                  overflow: 'hidden',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  border: '2px solid #334155'
+                                }}
+                                title="Clique para ampliar"
+                              >
+                                <img
+                                  src={item.imageUrl}
+                                  alt="Foto do Anúncio"
+                                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                                />
+                              </div>
+                            ) : (
+                              <div style={{ width: '100%', height: '180px', background: '#1e293b', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                                Sem Imagem
+                              </div>
+                            )}
+                            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>🔍 Clique na foto para ampliar</span>
+                          </div>
+
+                          {/* Coluna de Ações e Seleção de Produtos */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {/* Mensagem descritiva do erro */}
+                            <div style={{ background: '#1e293b', padding: '0.75rem 1rem', borderRadius: '6px', borderLeft: '4px solid #f87171', color: '#cbd5e1', fontSize: '0.85rem' }}>
+                              <strong>Diagnóstico:</strong> {item.errorMessage}
+                            </div>
+
+                            {/* SPUs atualmente atribuídos ao kit */}
+                            <div>
+                              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.4rem' }}>
+                                Componentes Selecionados para este Kit ({activeSpus.length}):
+                              </label>
+                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', minHeight: '38px' }}>
+                                {activeSpus.length === 0 ? (
+                                  <span style={{ color: '#f87171', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                                    Nenhum produto selecionado. Adicione os produtos do armazém abaixo.
+                                  </span>
+                                ) : (
+                                  activeSpus.map((spu, sIdx) => (
+                                    <div
+                                      key={sIdx}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.4rem',
+                                        padding: '0.35rem 0.75rem',
+                                        borderRadius: '6px',
+                                        background: '#1e3a8a',
+                                        border: '1px solid #3b82f6',
+                                        color: '#bfdbfe',
+                                        fontWeight: 700,
+                                        fontSize: '0.85rem'
+                                      }}
+                                    >
+                                      <span>📦 {spu}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveSpuFromErrorKit(item.listingId, spu)}
+                                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', padding: '0 2px' }}
+                                        title={`Remover ${spu}`}
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Seletor Interativo de Produtos do Armazém Supabase */}
+                            <div style={{ background: '#1a1e2e', padding: '1rem', borderRadius: '8px', border: '1px solid #334155' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#38bdf8' }}>
+                                  ➕ Localizar & Adicionar Produto do Armazém Supabase:
+                                </label>
+                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                  {uniqueWarehouseProducts.length} produtos cadastrados no armazém
+                                </span>
+                              </div>
+
+                              <input
+                                type="text"
+                                placeholder="🔍 Digite o SPU, Nome ou SKU do produto..."
+                                value={warehouseSearchPerListing[item.listingId] || ''}
+                                onChange={e => setWarehouseSearchPerListing({ ...warehouseSearchPerListing, [item.listingId]: e.target.value })}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.6rem 0.85rem',
+                                  borderRadius: '6px',
+                                  background: '#0f172a',
+                                  border: '1px solid #3b82f6',
+                                  color: '#fff',
+                                  fontSize: '0.85rem',
+                                  marginBottom: '0.75rem'
+                                }}
+                              />
+
+                              {/* Lista de Produtos Encontrados no Armazém */}
+                              <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.5rem' }}>
+                                {matchingWarehouseProds.map((prod, pIdx) => {
+                                  const isAlreadyAdded = activeSpus.includes(prod.spu.toUpperCase())
+                                  return (
+                                    <div
+                                      key={pIdx}
+                                      style={{
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        background: isAlreadyAdded ? '#1e293b' : '#0f172a',
+                                        border: isAlreadyAdded ? '1px solid #059669' : '1px solid #1e293b',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '0.5rem'
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                                        {prod.image_url ? (
+                                          <img
+                                            src={prod.image_url}
+                                            alt=""
+                                            style={{ width: '32px', height: '32px', objectFit: 'contain', background: '#fff', borderRadius: '4px' }}
+                                          />
+                                        ) : (
+                                          <div style={{ width: '32px', height: '32px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📦</div>
+                                        )}
+                                        <div style={{ overflow: 'hidden' }}>
+                                          <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {prod.spu}
+                                          </div>
+                                          <div style={{ color: '#94a3b8', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {prod.product_name || prod.sku}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (isAlreadyAdded) {
+                                            handleRemoveSpuFromErrorKit(item.listingId, prod.spu)
+                                          } else {
+                                            handleAddSpuToErrorKit(item.listingId, prod.spu)
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '0.35rem 0.65rem',
+                                          borderRadius: '4px',
+                                          background: isAlreadyAdded ? '#7f1d1d' : '#16a34a',
+                                          color: '#fff',
+                                          border: 'none',
+                                          fontSize: '0.75rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        {isAlreadyAdded ? '✓ Adicionado' : '+ Adicionar'}
+                                      </button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+
+                            {/* De-Para de Cor (se houver variação de cor na planilha) */}
+                            {item.availableColorsInWarehouse.length > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#1a1e2e', padding: '0.75rem 1rem', borderRadius: '6px' }}>
+                                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                  🎨 Cor de Correspondência no Armazém:
+                                </label>
+                                <select
+                                  value={selectedDePara[item.listingId] || item.availableColorsInWarehouse[0] || ''}
+                                  onChange={e => setSelectedDePara({ ...selectedDePara, [item.listingId]: e.target.value })}
+                                  style={{
+                                    padding: '0.45rem 0.75rem',
+                                    borderRadius: '6px',
+                                    background: '#0f172a',
+                                    border: '1px solid #3b82f6',
+                                    color: '#4ade80',
+                                    fontWeight: 700,
+                                    fontSize: '0.85rem',
+                                    outline: 'none',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {item.availableColorsInWarehouse.map((c, cIdx) => (
+                                    <option key={cIdx} value={c}>{c}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            {/* Botão de Concluir Resolução */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
                               <button
                                 type="button"
-                                onClick={(evt) => { evt.preventDefault(); setModalImg(imgUrl); }}
-                                onMouseEnter={(evt) => setHoveredImg({ url: imgUrl, x: evt.clientX, y: evt.clientY })}
-                                onMouseMove={(evt) => setHoveredImg({ url: imgUrl, x: evt.clientX, y: evt.clientY })}
-                                onMouseLeave={() => setHoveredImg(null)}
-                                style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                                onClick={() => handleResolveErrorKit(item)}
+                                disabled={activeSpus.length === 0}
+                                style={{
+                                  padding: '0.75rem 1.5rem',
+                                  borderRadius: '8px',
+                                  background: activeSpus.length > 0 ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#334155',
+                                  color: '#fff',
+                                  fontWeight: 700,
+                                  fontSize: '0.9rem',
+                                  border: 'none',
+                                  cursor: activeSpus.length > 0 ? 'pointer' : 'not-allowed',
+                                  boxShadow: activeSpus.length > 0 ? '0 4px 6px -1px rgba(16, 185, 129, 0.3)' : 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem'
+                                }}
                               >
-                                Ver Imagem
+                                ✓ Confirmar & Mover para Formação dos Kits
                               </button>
-                            ) : '-'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+              )}
 
-          {/* Conteúdo Aba Vision Log */}
-          {activeTab === 'vision' && (
-            <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                <thead>
-                  <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                    <th style={{ padding: '0.75rem 1rem' }}>ID Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Título do Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Método de Identificação</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>SPUs Identificados (Visuais)</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Foto do Kit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visionLogs
-                    .filter(v => {
-                      if (!searchTerm.trim()) return true
-                      const norm = searchTerm.trim().toLowerCase()
-                      return [v.listingId, v.title, v.visionSpus.join(' '), v.visionConfidence, v.fallbackReason].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
-                    })
-                    .map((v, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#94a3b8', fontSize: '0.8rem' }}>{v.listingId}</td>
-                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{v.title}</td>
-                      <td style={{ padding: '0.65rem 1rem' }}>
-                        {!v.fallbackUsed ? (
-                          <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#4c1d95', color: '#c4b5fd', fontWeight: 600, fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                            🧠 Vision AI ({v.visionConfidence === 'high' ? 'Alta Confiança' : 'Média Confiança'})
-                          </span>
-                        ) : (
-                          <span style={{ padding: '0.25rem 0.6rem', borderRadius: '4px', background: '#1e293b', color: '#fbbf24', border: '1px solid #d97706', fontWeight: 600, fontSize: '0.75rem' }} title={v.fallbackReason}>
-                            📝 Fallback Título ({v.fallbackReason || 'Vision indisponível'})
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', color: '#38bdf8', fontWeight: 700 }}>
-                        {v.visionSpus.length > 0 ? v.visionSpus.join(' + ') : <span style={{ color: '#64748b' }}>Nenhum SPU reconhecido</span>}
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem' }}>
-                        {v.imageUrl ? (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); setModalImg(v.imageUrl); }}
-                            onMouseEnter={(e) => setHoveredImg({ url: v.imageUrl, x: e.clientX, y: e.clientY })}
-                            onMouseMove={(e) => setHoveredImg({ url: v.imageUrl, x: e.clientX, y: e.clientY })}
-                            onMouseLeave={() => setHoveredImg(null)}
-                            style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
-                          >
-                            Ver Foto
-                          </button>
-                        ) : '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* Botão para visualizar tabela de logs de auditoria */}
+              <div style={{ marginTop: '1.5rem', borderTop: '1px solid #2a2e3d', paddingTop: '1.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAuditLogs(!showAuditLogs)}
+                  style={{
+                    background: 'none',
+                    border: '1px solid #334155',
+                    color: '#94a3b8',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 600
+                  }}
+                >
+                  {showAuditLogs ? '▲ Ocultar Tabela de Ocorrências (Auditoria)' : `▼ Ver Tabela de Ocorrências (${errorLogsList.length} registros)`}
+                </button>
+
+                {showAuditLogs && (
+                  <div style={{ marginTop: '1rem', overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                      <thead>
+                        <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
+                          <th style={{ padding: '0.75rem 1rem' }}>Tipo</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Linha</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Anúncio</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Campo</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Mensagem de Erro</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {errorLogsList.map((e, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
+                            <td style={{ padding: '0.65rem 1rem' }}>
+                              <span style={{
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: '4px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                background: e.type === 'ERRO' ? '#7f1d1d' : '#064e3b',
+                                color: e.type === 'ERRO' ? '#fca5a5' : '#6ee7b7'
+                              }}>
+                                {e.type}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>{e.clientRow}</td>
+                            <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{e.productName}</td>
+                            <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
+                            <td style={{ padding: '0.65rem 1rem', color: '#cbd5e1' }}>{e.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </>
       )}
 
-      {/* Popover flutuante no Hover */}
+      {/* Popover flutuante no Hover da Imagem */}
       {hoveredImg && !modalImg && (
         <div style={{
           position: 'fixed',
@@ -951,7 +1264,7 @@ export default function PadronizacaoPage() {
         </div>
       )}
 
-      {/* Modal Popup ao Clicar */}
+      {/* Modal Popup ao Clicar na Imagem */}
       {modalImg && (
         <div
           onClick={() => setModalImg(null)}

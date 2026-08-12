@@ -17,6 +17,7 @@ export interface VisionIdentifyRequest {
 export interface VisionIdentifyResponse {
   identifiedSpus: string[]
   unmappedItems?: string[]
+  totalItemsInPhoto?: number
   confidence: 'high' | 'medium' | 'low'
   reasoning: string
   error?: string
@@ -52,19 +53,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         identifiedSpus: [],
         confidence: 'low',
-        reasoning: 'GEMINI_API_KEY nao configurada no servidor.',
+        reasoning: 'GEMINI_API_KEY não configurada no servidor.',
         error: 'API_KEY_MISSING'
       } as VisionIdentifyResponse, { status: 200 })
     }
 
     const body: VisionIdentifyRequest = await req.json()
-    const { imageUrl, warehouseProducts, titleHint } = body
+    const { imageUrl, warehouseProducts } = body
 
     if (!imageUrl || warehouseProducts.length === 0) {
       return NextResponse.json({
         identifiedSpus: [],
         confidence: 'low',
-        reasoning: 'URL da imagem ou lista de produtos do armazem nao fornecida.',
+        reasoning: 'URL da imagem ou lista de produtos do armazém não fornecida.',
         error: 'MISSING_PARAMS'
       } as VisionIdentifyResponse, { status: 200 })
     }
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         identifiedSpus: [],
         confidence: 'low',
-        reasoning: 'Nao foi possivel baixar a imagem do anuncio.',
+        reasoning: 'Não foi possível baixar a imagem do anúncio.',
         error: 'IMAGE_FETCH_ERROR'
       } as VisionIdentifyResponse, { status: 200 })
     }
@@ -116,12 +117,12 @@ export async function POST(req: NextRequest) {
     // 4a. Imagens de referência dos produtos do armazém (com labels)
     if (spusWithImage.length > 0) {
       parts.push({
-        text: `IMAGENS DE REFERENCIA DOS PRODUTOS CADASTRADOS NO ARMAZEM DO CLIENTE:\nAbaixo estao ${spusWithImage.length} imagens de referencia. Cada imagem e de um produto diferente com seu SPU e nome.\nUse estas imagens para fazer COMPARACAO VISUAL DIRETA com a foto do anuncio.\n`
+        text: `IMAGENS DE REFERÊNCIA DOS PRODUTOS CADASTRADOS NO ARMAZÉM DO SUPABASE:\nAbaixo estão ${spusWithImage.length} imagens de referência oficiais do armazém. Cada imagem possui seu código SPU e Nome correspondente.\nUse estas imagens para fazer COMPARAÇÃO VISUAL DIRETA E ESTRITA com a foto do anúncio.\n`
       })
 
       for (const ref of spusWithImage) {
         parts.push({
-          text: `--- PRODUTO DE REFERENCIA: SPU="${ref.spu}" | Nome="${ref.name}" ---`
+          text: `--- PRODUTO DO ARMAZÉM: SPU="${ref.spu}" | Nome="${ref.name}" ---`
         })
         parts.push({
           inlineData: { mimeType: ref.imageData!.mimeType, data: ref.imageData!.base64 }
@@ -129,34 +130,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4b. SPUs sem imagem (apenas texto)
+    // 4b. SPUs sem imagem (apenas texto de apoio)
     if (spusWithoutImage.length > 0) {
       const textOnlyList = spusWithoutImage
-        .map((r, i) => `${i + 1}. SPU: "${r.spu}" | Nome: "${r.name}" (sem imagem de referencia disponivel)`)
+        .map((r, i) => `${i + 1}. SPU: "${r.spu}" | Nome: "${r.name}" (sem imagem cadastrada)`)
         .join('\n')
       parts.push({
-        text: `\nPRODUTOS SEM IMAGEM DE REFERENCIA (identificar apenas pelo nome):\n${textOnlyList}\n`
+        text: `\nPRODUTOS SEM IMAGEM DE REFERÊNCIA NO ARMAZÉM:\n${textOnlyList}\n`
       })
     }
 
-    // 4c. Foto do anúncio (a imagem principal a ser analisada)
+    // 4c. Foto do anúncio
     parts.push({
-      text: `\n--- FOTO DO ANUNCIO A SER ANALISADA ---`
+      text: `\n--- FOTO DO ANÚNCIO DE MARKETPLACE A SER ANALISADA ---`
     })
     parts.push({
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
     parts.push({
-      text: `INSTRUCOES DE IDENTIFICACAO VISUAL 100% BASEADA EM IMAGEM:
-Voce e um especialista em comparacao visual de fotos de produtos.
-Sua analise DEVE SER 100% BASEADA NA COMPARACAO VISUAL ENTRE A FOTO DO ANUNCIO E AS IMAGENS DE REFERENCIA DO ARMAZEM DO SUPABASE.
-DESCARTE COMPLETAMENTE TEXTOS OU TITULOS DO ANUNCIO. ANALISE EXCLUSIVAMENTE AS FORMAS E APARÊNCIA VISUAL NAS FOTOS.
-
-PARA CADA ITEM PRESENTE NA FOTO DO ANUNCIO:
-1. Encontre a imagem de referencia do armazem que seja visualmente correspondente em formato, modelo e tipo de produto, e retorne o codigo SPU dessa imagem de referencia.
-2. Se a foto do anuncio contiver algum produto que NAO CORRESPONDE a nenhuma imagem de referencia do armazem (por exemplo, um modelo de relogio ou acessorio que nao tem foto igual no armazem), retorne "UNMAPPED_[DESCRICAO_DO_ITEM]".
-
-Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separados por virgula. Exemplo: V20, LC-400, i12 ou UNMAPPED_SMARTBAND_OVAL, LC-400, i12`
+      text: `REGRAS ESTRITAS DE COMPARAÇÃO VISUAL:
+1. REGRA MANDATÓRIA: O sistema NÃO pode identificar produtos por mera semelhança ou categoria genérica. Você DEVE IDENTIFICAR APENAS produtos que sejam ESTRITAMENTE IDÊNTICOS (mesmo modelo, mesmo formato, mesmo design visual) entre a foto do anúncio e as fotos de referência do armazém.
+2. CONTAGEM DE ITENS: Conte quantos produtos físicos distintos estão expostos na foto do anúncio (ex: se a foto mostra 1 sapato + 1 relógio + 1 cinto + 1 carteira, são 4 itens).
+3. ITENS NÃO IDÊNTICOS OU AUSENTES: Se um item na foto do anúncio for de um modelo diferente, não possuir referência idêntica no armazém ou for desconhecido, retorne como "UNMAPPED_[DESCRIÇÃO]".
+4. FORMATO DA RESPOSTA (JSON):
+Responda EXCLUSIVAMENTE em formato JSON com a seguinte estrutura:
+{
+  "total_items_in_photo": <número total de itens físicos visíveis na foto>,
+  "matched_spus": ["<SPU1>", "<SPU2>"],
+  "unmapped_items": ["<Descrição de item que não é idêntico a nenhum produto do armazém>"],
+  "reasoning": "<Breve explicação da correspondência visual idêntica>"
+}`
     })
 
     // 5. Chamar Gemini 2.0 Flash
@@ -168,88 +171,82 @@ Responda SOMENTE com os codigos SPUs identificados e/ou itens UNMAPPED, separado
 
     const rawText = (response.text || '').trim()
 
-    // 6. Parsear resposta de forma estrita e 100% dinamica por SPU (Sem nenhum SPU fixo no codigo!)
-    let mentionedSpus: string[] = []
-    const unmappedItems: string[] = []
+    // 6. Parsear JSON com fallback
+    let matchedSpus: string[] = []
+    let unmappedItems: string[] = []
+    let totalItemsInPhoto = 0
+    let reasoning = ''
 
-    const rawTokens = rawText
-      .replace(/["'`]/g, '')
-      .split(/[,\n;]+/)
-      .map((t: string) => t.trim())
-      .filter((t: string) => t.length > 0)
-
-    for (const token of rawTokens) {
-      const normToken = token.toUpperCase().trim()
-
-      if (normToken.startsWith('UNMAPPED')) {
-        const isNarrowSmartband = /NARROW|SMARTBAND|OVAL|CAPSULA|FINO/i.test(normToken)
-        const isAnalogWatchToken = /ANALOG|PONTEIRO|R40/i.test(normToken)
-        const isDigitalWatchToken = !isAnalogWatchToken && /DIGITAL|WATCH|RELOGIO|LED|SMARTWATCH|V20/i.test(normToken)
-
-        if (isNarrowSmartband) {
-          const itemDesc = 'Relógio Digital Fino (Smartband Oval)'
-          if (!unmappedItems.includes(itemDesc)) {
-            unmappedItems.push(itemDesc)
-          }
-          continue
+    try {
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        totalItemsInPhoto = Number(parsed.total_items_in_photo) || 0
+        if (Array.isArray(parsed.matched_spus)) {
+          matchedSpus = parsed.matched_spus.map((s: any) => String(s).trim()).filter(Boolean)
         }
-
-        if (isAnalogWatchToken) {
-          const analogWatchProd = warehouseProducts.find(p => {
-            const spuUpper = p.spu.toUpperCase()
-            const nameUpper = (p.product_name || '').toUpperCase()
-            return /R40|ANALOG|PONTEIRO/.test(spuUpper) || /ANALOG|PONTEIRO/.test(nameUpper)
-          })
-          if (analogWatchProd && !mentionedSpus.includes(analogWatchProd.spu)) {
-            mentionedSpus.push(analogWatchProd.spu)
-            continue
-          }
+        if (Array.isArray(parsed.unmapped_items)) {
+          unmappedItems = parsed.unmapped_items.map((u: any) => String(u).trim()).filter(Boolean)
         }
-
-        if (isDigitalWatchToken) {
-          const digitalWatchProd = warehouseProducts.find(p => {
-            const spuUpper = p.spu.toUpperCase()
-            const nameUpper = (p.product_name || '').toUpperCase()
-            return /V20|DIGITAL|SMARTWATCH|LED/.test(spuUpper) || /DIGITAL|SMARTWATCH|LED/.test(nameUpper) || (!/R40|ANALOG|PONTEIRO/.test(spuUpper) && /RELOGIO|RELÓGIO/.test(spuUpper))
-          })
-
-          if (digitalWatchProd && !mentionedSpus.includes(digitalWatchProd.spu)) {
-            mentionedSpus.push(digitalWatchProd.spu)
-            continue
-          }
-        }
-
-        const cleanUnmappedName = token.replace(/^UNMAPPED_?/i, '').replace(/_/g, ' ').trim() || 'Item Não Mapeado'
-        if (!unmappedItems.includes(cleanUnmappedName)) {
-          unmappedItems.push(cleanUnmappedName)
-        }
-        continue
+        reasoning = parsed.reasoning || ''
       }
+    } catch {
+      // Fallback por regex caso o modelo retorne texto simples
+      const rawTokens = rawText
+        .replace(/["'`{}]/g, '')
+        .split(/[,\n;]+/)
+        .map((t: string) => t.trim())
+        .filter((t: string) => t.length > 0)
 
-      // Match dinâmico contra a lista de produtos do armazém Supabase
-      const matched = warehouseProducts.find(p => {
-        const pNormSpu = p.spu.toUpperCase().replace(/\s+/g, '').trim()
-        const cleanNormToken = normToken.replace(/\s+/g, '').trim()
+      for (const token of rawTokens) {
+        if (token.toUpperCase().startsWith('UNMAPPED')) {
+          const cleanDesc = token.replace(/^UNMAPPED_?/i, '').replace(/_/g, ' ').trim()
+          if (cleanDesc && !unmappedItems.includes(cleanDesc)) unmappedItems.push(cleanDesc)
+        } else {
+          const matched = warehouseProducts.find(p => {
+            const pNorm = p.spu.toUpperCase().replace(/[\s-_]/g, '')
+            const tNorm = token.toUpperCase().replace(/[\s-_]/g, '')
+            return pNorm === tNorm
+          })
+          if (matched && !matchedSpus.includes(matched.spu)) {
+            matchedSpus.push(matched.spu)
+          }
+        }
+      }
+      totalItemsInPhoto = matchedSpus.length + unmappedItems.length
+    }
 
-        return pNormSpu === cleanNormToken ||
-               pNormSpu === cleanNormToken.replace(/-/g, '') ||
-               cleanNormToken === pNormSpu.replace(/-/g, '')
+    // Validar se todos os matchedSpus existem no armazém
+    const validMatchedSpus: string[] = []
+    for (const spuCandidate of matchedSpus) {
+      const found = warehouseProducts.find(p => {
+        const pNorm = p.spu.toUpperCase().replace(/[\s-_]/g, '')
+        const cNorm = spuCandidate.toUpperCase().replace(/[\s-_]/g, '')
+        return pNorm === cNorm
       })
-
-      if (matched && !mentionedSpus.includes(matched.spu)) {
-        mentionedSpus.push(matched.spu)
+      if (found && !validMatchedSpus.includes(found.spu)) {
+        validMatchedSpus.push(found.spu)
+      } else if (!found) {
+        if (!unmappedItems.includes(spuCandidate)) {
+          unmappedItems.push(spuCandidate)
+        }
       }
     }
 
+    if (totalItemsInPhoto === 0) {
+      totalItemsInPhoto = validMatchedSpus.length + unmappedItems.length
+    }
+
     const confidence: 'high' | 'medium' | 'low' =
-      mentionedSpus.length >= 2 ? 'high' :
-      mentionedSpus.length === 1 ? 'medium' : 'low'
+      validMatchedSpus.length >= 2 && unmappedItems.length === 0 ? 'high' :
+      validMatchedSpus.length >= 1 ? 'medium' : 'low'
 
     return NextResponse.json({
-      identifiedSpus: mentionedSpus,
+      identifiedSpus: validMatchedSpus,
       unmappedItems: unmappedItems.length > 0 ? unmappedItems : undefined,
+      totalItemsInPhoto,
       confidence,
-      reasoning: rawText.slice(0, 300)
+      reasoning: reasoning || rawText.slice(0, 200)
     } as VisionIdentifyResponse)
 
   } catch (err: any) {

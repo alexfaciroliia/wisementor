@@ -29,18 +29,23 @@ export interface GeneratedKitRow {
   skuQty: number
 }
 
-export interface UnreconciledListingItem {
+export interface ErrorCenterKitItem {
   listingId: string
   title: string
+  cleanTitle: string
   imageUrl: string
-  spu: string
-  componentSPUs: string[]
-  importedColor: string
-  importedSize: string
+  statusMarketplace: string
+  rows: MarketplaceListingRow[]
+  identifiedSpus: string[]
+  unmappedItems?: string[]
+  totalItemsInPhoto?: number
+  errorReason: 'incomplete_match' | 'no_match' | 'unmapped_items' | 'unreconciled_variation' | 'manual_review'
+  errorMessage: string
+  importedColors: string[]
+  importedSizes: string[]
   availableColorsInWarehouse: string[]
   availableSizesInWarehouse: string[]
-  unmatchedType: 'color' | 'size' | 'both'
-  rows: MarketplaceListingRow[]
+  unmatchedType?: 'color' | 'size' | 'both'
 }
 
 export interface ProcessedListingResult {
@@ -59,7 +64,7 @@ export interface ParseMarketplaceResult {
   kitsRows: GeneratedKitRow[]
   allListings: ProcessedListingResult[]
   errorLogs: ErrorLogItem[]
-  unreconciledItems?: UnreconciledListingItem[]
+  errorCenterKits: ErrorCenterKitItem[]
 }
 
 // 1. Normalização para busca fuzzy tolerante
@@ -499,18 +504,18 @@ export function processMarketplaceListings(
     allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: [] })
   }
 
-  return { kitsRows, allListings, errorLogs: globalErrorLogs }
+  return { kitsRows, allListings, errorLogs: globalErrorLogs, errorCenterKits: [] }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// VISION AI INTEGRATION
+// VISION AI INTEGRATION & BUILD KIT ROWS HELPER
 // ──────────────────────────────────────────────────────────────────────────────
 
 export type VisionIdentifyFn = (
   imageUrl: string,
   products: WarehouseProductItem[],
   titleHint?: string
-) => Promise<string[] | { identifiedSpus: string[]; unmappedItems?: string[] }>
+) => Promise<string[] | { identifiedSpus: string[]; unmappedItems?: string[]; totalItemsInPhoto?: number }>
 
 export interface VisionProcessingLog {
   listingId: string
@@ -520,6 +525,54 @@ export interface VisionProcessingLog {
   visionConfidence: string
   fallbackUsed: boolean
   fallbackReason?: string
+}
+
+export function buildKitRowsForListing(
+  listing: { listingId: string; title: string; imageUrl?: string; rows: MarketplaceListingRow[] },
+  componentSpus: string[],
+  targetProducts: WarehouseProductItem[],
+  categoryRules: ClientCategoryRule[] = [],
+  colorOverride?: string
+): { generatedRows: GeneratedKitRow[]; kitSku: string } {
+  const updatedRows: GeneratedKitRow[] = []
+  const cleanTitle = (listing.title || '').replace(/\s+/g, ' ').trim()
+  const spus = componentSpus.length > 0 ? componentSpus : ['PRODUTO']
+  const spuPart = orderKitSpus(spus, targetProducts, categoryRules)
+
+  for (const variationRow of listing.rows) {
+    const rowCorRaw = (variationRow.colorRaw || '').trim()
+    const rawTam = (variationRow.sizeRaw || 'U').trim()
+    const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
+
+    // Verificar se a cor original da variação já bate com o armazém ou se usa override do de-para
+    const checkRes = checkWarehouseColorSizeReconciliation(spus[0] || '', rowCorRaw, tam, targetProducts)
+    const rowColor = (checkRes.isReconciled && checkRes.matchedColor) ? checkRes.matchedColor : (colorOverride || rowCorRaw || 'UNICA')
+
+    const cleanCor = removeAccentsAndCedilla(rowColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
+    const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
+
+    let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
+    if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
+
+    const imgForRow = (variationRow.imageUrl || listing.imageUrl || '').trim()
+
+    for (const compSpu of spus) {
+      const officialWarehouseSku = findExactWarehouseSku(compSpu, rowColor, tam, targetProducts)
+      const kitRow: GeneratedKitRow = {
+        kitSku,
+        title: cleanTitle,
+        imageUrl: imgForRow,
+        sku: officialWarehouseSku,
+        skuQty: 1
+      }
+      updatedRows.push(kitRow)
+    }
+  }
+
+  return {
+    generatedRows: updatedRows,
+    kitSku: updatedRows[0]?.kitSku || `KIT-${spuPart}`
+  }
 }
 
 export async function processMarketplaceListingsWithVision(
@@ -537,7 +590,7 @@ export async function processMarketplaceListingsWithVision(
   const allListings: ProcessedListingResult[] = []
   const globalErrorLogs: ErrorLogItem[] = []
   const visionLogs: VisionProcessingLog[] = []
-  const unreconciledItems: UnreconciledListingItem[] = []
+  const errorCenterKits: ErrorCenterKitItem[] = []
 
   const listingsMap = new Map<string, MarketplaceListingRow[]>()
   for (const row of marketplaceRows) {
@@ -558,7 +611,7 @@ export async function processMarketplaceListingsWithVision(
     return hasKeyword || hasPlus
   })
 
-  const imageVisionCache = new Map<string, { identified: string[]; unmapped: string[] }>()
+  const imageVisionCache = new Map<string, { identified: string[]; unmapped: string[]; totalInPhoto: number }>()
   let kitIdx = 0
 
   for (const [listingId, rows] of allEntries) {
@@ -599,109 +652,59 @@ export async function processMarketplaceListingsWithVision(
     let fallbackReason = ''
     let visionConfidence = 'none'
     const knownUnmapped: string[] = []
+    let totalItemsInPhoto = 0
 
-    // 1. Tentar identificar por Vision AI
+    // 1. Identificar estritamente por fotos usando Vision AI
     if (visionFn && imgUrl) {
       try {
         if (imageVisionCache.has(imgUrl)) {
           const cached = imageVisionCache.get(imgUrl)!
-          if (cached.identified.length > 0 || (cached.unmapped && cached.unmapped.length > 0)) {
-            componentSPUs = [...cached.identified]
-            if (cached.unmapped && cached.unmapped.length > 0) {
-              knownUnmapped.push(...cached.unmapped)
-            }
-            visionUsed = true
-            visionConfidence = 'cached'
+          componentSPUs = [...cached.identified]
+          if (cached.unmapped && cached.unmapped.length > 0) {
+            knownUnmapped.push(...cached.unmapped)
           }
+          totalItemsInPhoto = cached.totalInPhoto || (componentSPUs.length + knownUnmapped.length)
+          visionUsed = true
+          visionConfidence = 'cached'
         }
         
         if (!visionUsed) {
           const res = await visionFn(imgUrl, targetProducts, rawTitle)
           let identified: string[] = []
           let unmapped: string[] = []
+          let totalCount = 0
+
           if (Array.isArray(res)) {
             identified = res
+            totalCount = res.length
           } else if (res && typeof res === 'object') {
             identified = res.identifiedSpus || []
             if (res.unmappedItems && res.unmappedItems.length > 0) {
               unmapped = [...res.unmappedItems]
               knownUnmapped.push(...res.unmappedItems)
             }
+            totalCount = res.totalItemsInPhoto || (identified.length + unmapped.length)
           }
 
-          if (identified.length > 0 || unmapped.length > 0) {
-            imageVisionCache.set(imgUrl, { identified, unmapped })
-            visionUsed = true
-            visionConfidence = identified.length >= 2 ? 'high' : identified.length === 1 ? 'medium' : 'low'
-            if (identified.length > 0) {
-              componentSPUs = [...identified]
-            }
-          }
+          imageVisionCache.set(imgUrl, { identified, unmapped, totalInPhoto: totalCount })
+          visionUsed = true
+          componentSPUs = [...identified]
+          totalItemsInPhoto = totalCount
+          visionConfidence = (identified.length >= 2 && unmapped.length === 0) ? 'high' : identified.length >= 1 ? 'medium' : 'low'
         }
       } catch (visionErr: any) {
         fallbackReason = `Vision error: ${visionErr.message}`
       }
     }
 
-    const localErrors: ErrorLogItem[] = []
     const currentImgUrl = (firstRow.imageUrl || '').trim()
+    const importedColors = Array.from(new Set(rows.map(r => (r.colorRaw || '').trim()).filter(Boolean)))
+    const importedSizes = Array.from(new Set(rows.map(r => (r.sizeRaw || '').trim()).filter(Boolean)))
 
-    // Registra erros para itens que a Visão AI identificou na foto mas que não possuem SPU no armazém
-    for (const unmapped of knownUnmapped) {
-      const errItem: ErrorLogItem = {
-        type: 'ERRO',
-        clientRow: firstRow.rowIdx,
-        productName: rawTitle,
-        field: 'Componente Não Localizado no Supabase',
-        originalValue: unmapped,
-        correctedValue: '-',
-        message: `Componente '${unmapped}' identificado na imagem do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre a variação correta no armazém.`,
-        generatedFile: 'Kits',
-        upSellerLineRange: '-',
-        imageUrl: currentImgUrl
-      }
-      globalErrorLogs.push(errItem)
-      localErrors.push(errItem)
-    }
-
-    // 2. EXTRAÇÃO E VALIDAÇÃO DE COMPONENTES:
-    // Quando a Visão AI é utilizada, a identificação é 100% BASEADA EM FOTOS.
-    // O título do anúncio é 100% descartado. Não fazemos nenhuma validação de texto por palavras do título.
-    // IMPORTANTE: Se a Visão AI foi chamada mas retornou 0 SPUs (falha de download de imagem ou IA incerta),
-    // tratamos como AVISO (sem kit formado), mas NÃO como ERRO bloqueante gerado pelo título.
-    if (!visionUsed) {
-      const titleComponents = extractKitComponents(rawTitle)
-      // Fallback: se a Visão AI NÃO foi chamada, extraímos produtos a partir das palavras do título
-      for (const compName of titleComponents) {
-        const found = findBestProductForComponent(compName, targetProducts, categoryRules, knownUnmapped)
-        if (found) {
-          const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-          if (!componentSPUs.includes(cleanSpu)) {
-            componentSPUs.push(cleanSpu)
-          }
-        } else {
-          const alreadyLogged = localErrors.some(e => e.originalValue === compName || e.message.includes(compName))
-          if (!alreadyLogged) {
-            const unmappedItem: ErrorLogItem = {
-              type: 'ERRO',
-              clientRow: firstRow.rowIdx,
-              productName: rawTitle,
-              field: 'Componente Não Localizado no Supabase',
-              originalValue: compName,
-              correctedValue: '-',
-              message: `Componente '${compName}' do anúncio (${listingId}) não foi encontrado no armazém Supabase. Identifique e cadastre o produto no armazém.`,
-              generatedFile: 'Kits',
-              upSellerLineRange: '-',
-              imageUrl: currentImgUrl
-            }
-            globalErrorLogs.push(unmappedItem)
-            localErrors.push(unmappedItem)
-          }
-        }
-      }
-      fallbackUsed = true
-      fallbackReason = fallbackReason || (!imgUrl ? 'Sem URL de imagem' : !visionFn ? 'Vision AI não configurada' : 'Vision retornou 0 resultados')
-    }
+    // Coletar cores e tamanhos disponíveis no armazém para os SPUs identificados
+    const availableWarehouseProds = targetProducts.filter(p => componentSPUs.includes(p.spu.toUpperCase()))
+    const availableColorsInWarehouse = Array.from(new Set(availableWarehouseProds.map(p => p.color).filter(Boolean)))
+    const availableSizesInWarehouse = Array.from(new Set(availableWarehouseProds.map(p => p.size).filter(Boolean)))
 
     visionLogs.push({
       listingId,
@@ -713,29 +716,77 @@ export async function processMarketplaceListingsWithVision(
       fallbackReason: fallbackUsed ? fallbackReason : undefined
     })
 
-    const hasError = localErrors.some(e => e.type === 'ERRO') || knownUnmapped.length > 0
+    // 2. VERIFICAÇÃO DE ERROS E IDENTIFICAÇÕES INCOMPLETAS
+    // Exemplo do usuário:
+    // - 3 produtos na foto e identificou 3 idênticos -> Formação dos Kits
+    // - 3 produtos na foto e identificou 1, 2 ou nenhum -> Central de Erros
+    // - Produto na foto que não existe no armazém (unmapped) -> Central de Erros
+    const hasZeroMatch = componentSPUs.length === 0
+    const hasUnmapped = knownUnmapped.length > 0
+    const hasPartialMatch = totalItemsInPhoto > 0 && totalItemsInPhoto > componentSPUs.length
 
-    if (componentSPUs.length === 0 || hasError) {
-      if (componentSPUs.length === 0 && !hasError) {
-        const emptyError: ErrorLogItem = {
-          type: 'AVISO', clientRow: firstRow.rowIdx, productName: rawTitle,
-          field: 'Componentes do Kit', originalValue: imgUrl || rawTitle, correctedValue: '-',
-          message: `Nenhum produto do kit foi encontrado no armazém Supabase. Cadastre os produtos no armazém.`,
-          generatedFile: 'Kits', upSellerLineRange: '-',
-          imageUrl: currentImgUrl
-        }
-        globalErrorLogs.push(emptyError)
-        localErrors.push(emptyError)
+    if (hasZeroMatch || hasUnmapped || hasPartialMatch) {
+      let errorReason: ErrorCenterKitItem['errorReason'] = 'incomplete_match'
+      let errorMessage = ''
+
+      if (hasZeroMatch) {
+        errorReason = 'no_match'
+        errorMessage = 'Nenhum produto idêntico da foto foi encontrado no armazém Supabase. Identifique os produtos manualmente.'
+      } else if (hasUnmapped) {
+        errorReason = 'unmapped_items'
+        errorMessage = `A foto exibe produto(s) sem cadastro no armazém: ${knownUnmapped.join(', ')}. Adicione o produto correspondente.`
+      } else {
+        errorReason = 'incomplete_match'
+        errorMessage = `A foto exibe ${totalItemsInPhoto} produtos, mas apenas ${componentSPUs.length} foram identificados (${componentSPUs.join(', ')}). Identifique o(s) produto(s) faltante(s).`
       }
-      allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'blocked_error', detectedType: 'kit', generatedKitRows: [], errorLogs: localErrors })
+
+      const errItem: ErrorLogItem = {
+        type: 'ERRO',
+        clientRow: firstRow.rowIdx,
+        productName: rawTitle,
+        field: 'Identificação de Fotos do Kit',
+        originalValue: imgUrl || rawTitle,
+        correctedValue: '-',
+        message: errorMessage,
+        generatedFile: 'Kits',
+        upSellerLineRange: '-',
+        imageUrl: currentImgUrl
+      }
+      globalErrorLogs.push(errItem)
+
+      errorCenterKits.push({
+        listingId,
+        title: rawTitle,
+        cleanTitle,
+        imageUrl: currentImgUrl,
+        statusMarketplace: firstRow.status || 'ativo',
+        rows,
+        identifiedSpus: [...componentSPUs],
+        unmappedItems: knownUnmapped.length > 0 ? [...knownUnmapped] : undefined,
+        totalItemsInPhoto,
+        errorReason,
+        errorMessage,
+        importedColors,
+        importedSizes,
+        availableColorsInWarehouse,
+        availableSizesInWarehouse
+      })
+
+      allListings.push({
+        listingId,
+        title: rawTitle,
+        cleanTitle,
+        statusMarketplace: firstRow.status || 'ativo',
+        listingStatus: 'blocked_error',
+        detectedType: 'kit',
+        generatedKitRows: [],
+        errorLogs: [errItem]
+      })
+
       continue
     }
 
-    // Regra 2: Ordenar SPUs (Acessórios Alfabéticos PRIMEIRO, Produto Principal por ÚLTIMO)
-    const spuPart = orderKitSpus(componentSPUs, targetProducts, categoryRules)
-    const itemKitRows: GeneratedKitRow[] = []
-
-    // 3. VERIFICAR CONCILIAÇÃO DE COR/TAMANHO PARA A NOVA ABA DE AJUSTES
+    // 3. VERIFICAÇÃO DE CONCILIAÇÃO DE VARIAÇÕES (COR/TAMANHO)
     let isUnreconciled = false
     let unreconciledDetail: { spu: string; importedColor: string; importedSize: string; availableColors: string[]; availableSizes: string[]; unmatchedType: 'color' | 'size' | 'both' } | null = null
 
@@ -763,19 +814,38 @@ export async function processMarketplaceListingsWithVision(
     }
 
     if (isUnreconciled && unreconciledDetail) {
-      unreconciledItems.push({
+      const varErrItem: ErrorLogItem = {
+        type: 'ERRO',
+        clientRow: firstRow.rowIdx,
+        productName: rawTitle,
+        field: 'Variação Não Encontrada no Armazém',
+        originalValue: unreconciledDetail.importedColor,
+        correctedValue: '-',
+        message: `A cor '${unreconciledDetail.importedColor}' do anúncio não possui correspondência cadastrada no armazém Supabase para o SPU '${unreconciledDetail.spu}'.`,
+        generatedFile: 'Kits',
+        upSellerLineRange: '-',
+        imageUrl: currentImgUrl
+      }
+      globalErrorLogs.push(varErrItem)
+
+      errorCenterKits.push({
         listingId,
         title: rawTitle,
-        imageUrl: (firstRow.imageUrl || '').trim(),
-        spu: unreconciledDetail.spu,
-        componentSPUs: [...componentSPUs],
-        importedColor: unreconciledDetail.importedColor,
-        importedSize: unreconciledDetail.importedSize,
+        cleanTitle,
+        imageUrl: currentImgUrl,
+        statusMarketplace: firstRow.status || 'ativo',
+        rows,
+        identifiedSpus: [...componentSPUs],
+        totalItemsInPhoto,
+        errorReason: 'unreconciled_variation',
+        errorMessage: `A variação de cor '${unreconciledDetail.importedColor}' precisa de de-para para ser conciliada com o armazém.`,
+        importedColors,
+        importedSizes,
         availableColorsInWarehouse: unreconciledDetail.availableColors,
         availableSizesInWarehouse: unreconciledDetail.availableSizes,
-        unmatchedType: unreconciledDetail.unmatchedType,
-        rows
+        unmatchedType: unreconciledDetail.unmatchedType
       })
+
       allListings.push({
         listingId,
         title: rawTitle,
@@ -784,43 +854,34 @@ export async function processMarketplaceListingsWithVision(
         listingStatus: 'unreconciled',
         detectedType: 'kit',
         generatedKitRows: [],
-        errorLogs: localErrors
+        errorLogs: [varErrItem]
       })
+
       continue
     }
 
-    for (const variationRow of rows) {
-      const cor = (variationRow.colorRaw || '').trim()
-      const rawTam = (variationRow.sizeRaw || 'U').trim()
-      // Desconsiderar "BR" do tamanho (exemplo: 37BR -> 37)
-      const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
+    // 4. FORMAÇÃO AUTOMÁTICA DO KIT COM 100% DE IDENTIFICAÇÃO E CONCILIAÇÃO
+    const { generatedRows, kitSku } = buildKitRowsForListing(
+      { listingId, title: rawTitle, imageUrl: currentImgUrl, rows },
+      componentSPUs,
+      targetProducts,
+      categoryRules
+    )
 
-      const cleanCor = removeAccentsAndCedilla(cor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
-      const cleanTam = removeAccentsAndCedilla(tam).replace(/\s+/g, '').replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() || 'U'
+    kitsRows.push(...generatedRows)
 
-      let kitSku = `KIT-${spuPart}-${cleanCor}-${cleanTam}`.replace(/\s+/g, '')
-      if (kitSku.length > 50) kitSku = kitSku.slice(0, 50)
-
-      // Regra 4: Foto da planilha de anúncios do UpSeller (coluna AP da linha correspondente)
-      const imgForRow = (variationRow.imageUrl || firstRow.imageUrl || '').trim()
-
-      // Regra 3: Buscar o SKU exato no Armazém Supabase cruzando SPU+Cor+Tamanho
-      for (const compSpu of componentSPUs) {
-        const officialWarehouseSku = findExactWarehouseSku(compSpu, cor, tam, targetProducts)
-        const kitRow: GeneratedKitRow = {
-          kitSku,
-          title: cleanTitle,
-          imageUrl: imgForRow,        // Foto da coluna AP do UpSeller da variação correspondente
-          sku: officialWarehouseSku,  // SKU exato do armazém no Supabase para a variação (SPU+Cor+Tamanho)
-          skuQty: 1
-        }
-        kitsRows.push(kitRow)
-        itemKitRows.push(kitRow)
-      }
-    }
-
-    allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: localErrors })
+    allListings.push({
+      listingId,
+      title: rawTitle,
+      cleanTitle,
+      statusMarketplace: firstRow.status || 'ativo',
+      listingStatus: 'standardized',
+      detectedType: 'kit',
+      kitSku,
+      generatedKitRows: generatedRows,
+      errorLogs: []
+    })
   }
 
-  return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs, unreconciledItems }
+  return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs, errorCenterKits }
 }
