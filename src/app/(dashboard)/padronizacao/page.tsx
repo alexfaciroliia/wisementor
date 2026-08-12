@@ -792,7 +792,6 @@ export default function PadronizacaoPage() {
                                   border: '1px solid #3b82f6',
                                   flexShrink: 0
                                 }}
-                                title="Passe o mouse para ver ampliado ou clique"
                               />
                               <button
                                 type="button"
@@ -984,7 +983,6 @@ export default function PadronizacaoPage() {
                                   transition: 'transform 0.2s, box-shadow 0.2s',
                                   boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3)'
                                 }}
-                                title="Passe o mouse para ver ampliado ou clique no modal"
                               >
                                 <img
                                   src={item.imageUrl}
@@ -1045,7 +1043,6 @@ export default function PadronizacaoPage() {
                                             onMouseMove={(e) => setHoveredImg({ url: spuMatch.image_url!, x: e.clientX, y: e.clientY })}
                                             onMouseLeave={() => setHoveredImg(null)}
                                             style={{ width: '20px', height: '20px', objectFit: 'contain', background: '#fff', borderRadius: '3px', cursor: 'pointer' }}
-                                            title="Passe o mouse para ver produto"
                                           />
                                         )}
                                         <span>📦 {spu}</span>
@@ -1120,7 +1117,6 @@ export default function PadronizacaoPage() {
                                             onMouseMove={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
                                             onMouseLeave={() => setHoveredImg(null)}
                                             style={{ width: '36px', height: '36px', objectFit: 'contain', background: '#fff', borderRadius: '4px', cursor: 'pointer', border: '1px solid #334155', flexShrink: 0 }}
-                                            title="Passe o mouse para ver ampliado"
                                           />
                                         ) : (
                                           <div style={{ width: '36px', height: '36px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', flexShrink: 0 }}>📦</div>
@@ -1285,28 +1281,25 @@ export default function PadronizacaoPage() {
         </>
       )}
 
-      {/* Popover flutuante no Hover da Imagem */}
+      {/* Popover flutuante no Hover da Imagem (Apenas a foto ampliada, sem textos sobrepostos) */}
       {hoveredImg && !modalImg && (
         <div style={{
           position: 'fixed',
-          left: Math.min(hoveredImg.x + 15, typeof window !== 'undefined' ? window.innerWidth - 270 : 800),
-          top: Math.max(10, Math.min(hoveredImg.y - 120, typeof window !== 'undefined' ? window.innerHeight - 270 : 600)),
+          left: Math.min(hoveredImg.x + 15, typeof window !== 'undefined' ? window.innerWidth - 290 : 800),
+          top: Math.max(10, Math.min(hoveredImg.y - 130, typeof window !== 'undefined' ? window.innerHeight - 290 : 600)),
           zIndex: 99999,
           pointerEvents: 'none',
           background: '#0f172a',
           border: '2px solid #3b82f6',
           borderRadius: '12px',
-          padding: '0.5rem',
+          padding: '0.35rem',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 10px 10px -5px rgba(0, 0, 0, 0.6)'
         }}>
           <img
             src={hoveredImg.url}
-            alt="Preview"
-            style={{ width: '230px', height: '230px', objectFit: 'contain', borderRadius: '8px', background: '#fff' }}
+            alt=""
+            style={{ width: '260px', height: '260px', objectFit: 'contain', borderRadius: '8px', background: '#fff', display: 'block' }}
           />
-          <div style={{ fontSize: '0.7rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.25rem' }}>
-            Clique para ampliar
-          </div>
         </div>
       )}
 

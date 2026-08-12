@@ -553,24 +553,21 @@ export default function ArmazemanPage() {
       {hoveredImg && !modalImg && (
         <div style={{
           position: 'fixed',
-          left: Math.min(hoveredImg.x + 15, typeof window !== 'undefined' ? window.innerWidth - 270 : 800),
-          top: Math.max(10, Math.min(hoveredImg.y - 120, typeof window !== 'undefined' ? window.innerHeight - 270 : 600)),
+          left: Math.min(hoveredImg.x + 15, typeof window !== 'undefined' ? window.innerWidth - 290 : 800),
+          top: Math.max(10, Math.min(hoveredImg.y - 130, typeof window !== 'undefined' ? window.innerHeight - 290 : 600)),
           zIndex: 99999,
           pointerEvents: 'none',
           background: '#0f172a',
           border: '2px solid #3b82f6',
           borderRadius: '12px',
-          padding: '0.5rem',
+          padding: '0.35rem',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.8), 0 10px 10px -5px rgba(0, 0, 0, 0.6)'
         }}>
           <img
             src={hoveredImg.url}
-            alt="Preview"
-            style={{ width: '230px', height: '230px', objectFit: 'contain', borderRadius: '8px', background: '#fff' }}
+            alt=""
+            style={{ width: '260px', height: '260px', objectFit: 'contain', borderRadius: '8px', background: '#fff', display: 'block' }}
           />
-          <div style={{ fontSize: '0.7rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.25rem' }}>
-            Clique para ampliar
-          </div>
         </div>
       )}
 
