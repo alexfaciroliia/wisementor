@@ -162,12 +162,21 @@ Responda EXCLUSIVAMENTE em formato JSON com a seguinte estrutura:
 }`
     })
 
-    // 5. Chamar Gemini 2.0 Flash
+    // 5. Chamar Gemini 3.5 Flash (com fallback para gemini-flash-latest)
     const ai = new GoogleGenAI({ apiKey })
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: [{ parts }]
-    })
+    let response: any = null
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: [{ parts }]
+      })
+    } catch (modelErr: any) {
+      console.warn('[vision/identify-kit] Fallback de modelo acionado devido a:', modelErr.message)
+      response = await ai.models.generateContent({
+        model: 'gemini-flash-latest',
+        contents: [{ parts }]
+      })
+    }
 
     const rawText = (response.text || '').trim()
 

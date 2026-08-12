@@ -774,16 +774,37 @@ export default function PadronizacaoPage() {
                         <td style={{ padding: '0.65rem 1rem', textAlign: 'center', fontWeight: 700, color: '#fbbf24' }}>{r.skuQty}</td>
                         <td style={{ padding: '0.65rem 1rem' }}>
                           {r.imageUrl ? (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.preventDefault(); setModalImg(r.imageUrl); }}
-                              onMouseEnter={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
-                              onMouseMove={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
-                              onMouseLeave={() => setHoveredImg(null)}
-                              style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit' }}
-                            >
-                              Ver Foto
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                              <img
+                                src={r.imageUrl}
+                                alt="Foto do Kit"
+                                onClick={() => setModalImg(r.imageUrl)}
+                                onMouseEnter={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                                onMouseMove={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                                onMouseLeave={() => setHoveredImg(null)}
+                                style={{
+                                  width: '38px',
+                                  height: '38px',
+                                  objectFit: 'contain',
+                                  background: '#fff',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  border: '1px solid #3b82f6',
+                                  flexShrink: 0
+                                }}
+                                title="Passe o mouse para ver ampliado ou clique"
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); setModalImg(r.imageUrl); }}
+                                onMouseEnter={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                                onMouseMove={(e) => setHoveredImg({ url: r.imageUrl, x: e.clientX, y: e.clientY })}
+                                onMouseLeave={() => setHoveredImg(null)}
+                                style={{ background: 'none', border: 'none', color: '#60a5fa', textDecoration: 'underline', cursor: 'pointer', padding: 0, font: 'inherit', fontSize: '0.8rem' }}
+                              >
+                                Ver Foto
+                              </button>
+                            </div>
                           ) : '-'}
                         </td>
                         <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
@@ -946,6 +967,9 @@ export default function PadronizacaoPage() {
                             {item.imageUrl ? (
                               <div
                                 onClick={() => setModalImg(item.imageUrl)}
+                                onMouseEnter={(e) => setHoveredImg({ url: item.imageUrl, x: e.clientX, y: e.clientY })}
+                                onMouseMove={(e) => setHoveredImg({ url: item.imageUrl, x: e.clientX, y: e.clientY })}
+                                onMouseLeave={() => setHoveredImg(null)}
                                 style={{
                                   width: '100%',
                                   height: '200px',
@@ -956,9 +980,11 @@ export default function PadronizacaoPage() {
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  border: '2px solid #334155'
+                                  border: '2px solid #3b82f6',
+                                  transition: 'transform 0.2s, box-shadow 0.2s',
+                                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3)'
                                 }}
-                                title="Clique para ampliar"
+                                title="Passe o mouse para ver ampliado ou clique no modal"
                               >
                                 <img
                                   src={item.imageUrl}
@@ -971,7 +997,7 @@ export default function PadronizacaoPage() {
                                 Sem Imagem
                               </div>
                             )}
-                            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>🔍 Clique na foto para ampliar</span>
+                            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>🔍 Passe o mouse ou clique para ampliar</span>
                           </div>
 
                           {/* Coluna de Ações e Seleção de Produtos */}
@@ -992,33 +1018,48 @@ export default function PadronizacaoPage() {
                                     Nenhum produto selecionado. Adicione os produtos do armazém abaixo.
                                   </span>
                                 ) : (
-                                  activeSpus.map((spu, sIdx) => (
-                                    <div
-                                      key={sIdx}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.4rem',
-                                        padding: '0.35rem 0.75rem',
-                                        borderRadius: '6px',
-                                        background: '#1e3a8a',
-                                        border: '1px solid #3b82f6',
-                                        color: '#bfdbfe',
-                                        fontWeight: 700,
-                                        fontSize: '0.85rem'
-                                      }}
-                                    >
-                                      <span>📦 {spu}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveSpuFromErrorKit(item.listingId, spu)}
-                                        style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', padding: '0 2px' }}
-                                        title={`Remover ${spu}`}
+                                  activeSpus.map((spu, sIdx) => {
+                                    const spuMatch = uniqueWarehouseProducts.find(p => p.spu.toUpperCase() === spu.toUpperCase())
+                                    return (
+                                      <div
+                                        key={sIdx}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.4rem',
+                                          padding: '0.35rem 0.75rem',
+                                          borderRadius: '6px',
+                                          background: '#1e3a8a',
+                                          border: '1px solid #3b82f6',
+                                          color: '#bfdbfe',
+                                          fontWeight: 700,
+                                          fontSize: '0.85rem'
+                                        }}
                                       >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ))
+                                        {spuMatch?.image_url && (
+                                          <img
+                                            src={spuMatch.image_url}
+                                            alt=""
+                                            onClick={() => setModalImg(spuMatch.image_url!)}
+                                            onMouseEnter={(e) => setHoveredImg({ url: spuMatch.image_url!, x: e.clientX, y: e.clientY })}
+                                            onMouseMove={(e) => setHoveredImg({ url: spuMatch.image_url!, x: e.clientX, y: e.clientY })}
+                                            onMouseLeave={() => setHoveredImg(null)}
+                                            style={{ width: '20px', height: '20px', objectFit: 'contain', background: '#fff', borderRadius: '3px', cursor: 'pointer' }}
+                                            title="Passe o mouse para ver produto"
+                                          />
+                                        )}
+                                        <span>📦 {spu}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveSpuFromErrorKit(item.listingId, spu)}
+                                          style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem', padding: '0 2px' }}
+                                          title={`Remover ${spu}`}
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    )
+                                  })
                                 )}
                               </div>
                             </div>
@@ -1073,11 +1114,16 @@ export default function PadronizacaoPage() {
                                         {prod.image_url ? (
                                           <img
                                             src={prod.image_url}
-                                            alt=""
-                                            style={{ width: '32px', height: '32px', objectFit: 'contain', background: '#fff', borderRadius: '4px' }}
+                                            alt={prod.product_name || prod.spu}
+                                            onClick={() => setModalImg(prod.image_url!)}
+                                            onMouseEnter={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
+                                            onMouseMove={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
+                                            onMouseLeave={() => setHoveredImg(null)}
+                                            style={{ width: '36px', height: '36px', objectFit: 'contain', background: '#fff', borderRadius: '4px', cursor: 'pointer', border: '1px solid #334155', flexShrink: 0 }}
+                                            title="Passe o mouse para ver ampliado"
                                           />
                                         ) : (
-                                          <div style={{ width: '32px', height: '32px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📦</div>
+                                          <div style={{ width: '36px', height: '36px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', flexShrink: 0 }}>📦</div>
                                         )}
                                         <div style={{ overflow: 'hidden' }}>
                                           <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
