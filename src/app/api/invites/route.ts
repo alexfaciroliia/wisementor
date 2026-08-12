@@ -127,9 +127,10 @@ export async function POST(request: Request) {
     // 4. Disparar o convite de autenticação do Supabase (envia o e-mail de convite oficial)
     let emailSent = true
     let actionLink = null
+    const origin = new URL(request.url).origin
 
     const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${new URL(request.url).origin}/auth/confirm`,
+      redirectTo: `${origin}/auth/confirm?type=invite`,
       data: {
         role: role
       }
@@ -143,7 +144,7 @@ export async function POST(request: Request) {
           type: 'invite',
           email: email,
           options: {
-            redirectTo: `${new URL(request.url).origin}/auth/confirm`,
+            redirectTo: `${origin}/auth/confirm?type=invite`,
             data: {
               role: role
             }
@@ -157,7 +158,6 @@ export async function POST(request: Request) {
         }
 
         emailSent = false
-        const origin = new URL(request.url).origin
         const hashedToken = linkData?.properties?.hashed_token
         actionLink = hashedToken
           ? `${origin}/auth/confirm?token_hash=${hashedToken}&type=invite`

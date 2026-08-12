@@ -215,9 +215,10 @@ export async function PUT(
     // 5. Enviar novo convite de e-mail (cria nova hash e token no Supabase)
     let emailSent = true
     let actionLink = null
+    const origin = new URL(request.url).origin
 
     const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(newEmail, {
-      redirectTo: `${new URL(request.url).origin}/auth/confirm`,
+      redirectTo: `${origin}/auth/confirm?type=invite`,
       data: {
         role: newRole
       }
@@ -231,7 +232,7 @@ export async function PUT(
           type: 'invite',
           email: newEmail,
           options: {
-            redirectTo: `${new URL(request.url).origin}/auth/confirm`,
+            redirectTo: `${origin}/auth/confirm?type=invite`,
             data: {
               role: newRole
             }
@@ -243,7 +244,6 @@ export async function PUT(
         }
 
         emailSent = false
-        const origin = new URL(request.url).origin
         const hashedToken = linkData?.properties?.hashed_token
         actionLink = hashedToken
           ? `${origin}/auth/confirm?token_hash=${hashedToken}&type=invite`
