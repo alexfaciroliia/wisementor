@@ -8,6 +8,7 @@ import {
   MarketplaceListingRow,
   GeneratedKitRow,
   ProcessedListingResult,
+  DuplicateKitListingItem,
   VisionProcessingLog,
   WarehouseProductItem,
   ErrorCenterKitItem,
@@ -31,7 +32,7 @@ export default function PadronizacaoPage() {
   const [processing, setProcessing] = useState(false)
   const [resultData, setResultData] = useState<ParseMarketplaceResult | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors'>('kits')
+  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors' | 'duplicates'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
   const [visionProgress, setVisionProgress] = useState<{ current: number; total: number; listingId: string } | null>(null)
   const [visionLogs, setVisionLogs] = useState<VisionProcessingLog[]>([])
@@ -301,6 +302,77 @@ export default function PadronizacaoPage() {
     })
   }
 
+  // Mover Anúncio Duplicado para a Central de Erros para permitir ajuste manual de componentes
+  function handleMoveDuplicateToErrorCenter(item: DuplicateKitListingItem) {
+    const usedSpus: string[] = []
+    if (item.generatedKitRows && item.generatedKitRows.length > 0) {
+      item.generatedKitRows.forEach(r => {
+        const p = currentWarehouseProducts.find(prod => prod.sku === r.sku)
+        if (p && !usedSpus.includes(p.spu)) {
+          usedSpus.push(p.spu)
+        }
+      })
+    }
+
+    const errorItem: ErrorCenterKitItem = {
+      listingId: item.listingId,
+      title: item.title,
+      cleanTitle: item.cleanTitle,
+      imageUrl: item.imageUrl,
+      statusMarketplace: item.statusMarketplace || 'ativo',
+      rows: item.rawRows || [
+        {
+          rowIdx: 1,
+          listingId: item.listingId,
+          title: item.title,
+          status: item.statusMarketplace || 'ativo',
+          imageUrl: item.imageUrl
+        }
+      ],
+      identifiedSpus: usedSpus,
+      errorReason: 'manual_review',
+      errorMessage: `Anúncio duplicado do anúncio "${item.duplicateOfListingId}". Enviado para a Central de Erros para selecionar componentes alternativos.`,
+      importedColors: [],
+      importedSizes: [],
+      availableColorsInWarehouse: Array.from(new Set(currentWarehouseProducts.map(p => p.color).filter(Boolean))),
+      availableSizesInWarehouse: Array.from(new Set(currentWarehouseProducts.map(p => p.size).filter(Boolean)))
+    }
+
+    setResultData(prev => {
+      if (!prev) return prev
+      const newDuplicates = (prev.duplicateListings || []).filter(d => d.listingId !== item.listingId)
+      const newAllListings = prev.allListings.map(l => {
+        if (l.listingId === item.listingId) {
+          return {
+            ...l,
+            listingStatus: 'blocked_error' as const,
+            generatedKitRows: []
+          }
+        }
+        return l
+      })
+      const newErrorCenterKits = [...(prev.errorCenterKits || []).filter(e => e.listingId !== item.listingId), errorItem]
+
+      return {
+        ...prev,
+        duplicateListings: newDuplicates,
+        allListings: newAllListings,
+        errorCenterKits: newErrorCenterKits
+      }
+    })
+
+    setCustomKitSpus(prev => ({
+      ...prev,
+      [item.listingId]: usedSpus
+    }))
+
+    setActiveTab('errors')
+    setMessage({
+      type: 'warning',
+      text: `O anúncio duplicado "${item.listingId}" foi movido para a Central de Erros. Você pode selecionar os produtos correspondentes para diferenciá-lo.`
+    })
+  }
+
   // 3. Adicionar SPU do Armazém ao Kit na Central de Erros
   function handleAddSpuToErrorKit(listingId: string, spu: string) {
     const cleanSpu = spu.trim().toUpperCase()
@@ -401,6 +473,7 @@ export default function PadronizacaoPage() {
   const conjuntosList = resultData?.allListings.filter(l => l.listingStatus === 'ignored_conjunto') || []
   const errorCenterKitsList = resultData?.errorCenterKits || []
   const errorLogsList = resultData?.errorLogs || []
+  const duplicateListingsList = resultData?.duplicateListings || []
 
   // Lista única de produtos do armazém para pesquisa rápida no seletor
   const uniqueWarehouseProducts = Array.from(
@@ -594,7 +667,23 @@ export default function PadronizacaoPage() {
             >
               <span style={{ fontSize: '0.8rem', color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Central de Erros</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f87171', marginTop: '0.25rem' }}>{errorCenterKitsList.length}</div>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Kits com produtos faltantes ou divergências</span>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Kits com divergências ou incompletos</span>
+            </div>
+
+            <div
+              onClick={() => setActiveTab('duplicates')}
+              style={{
+                background: activeTab === 'duplicates' ? '#4c1d95' : '#1e293b',
+                padding: '1.25rem',
+                borderRadius: '10px',
+                border: '1px solid #8b5cf6',
+                cursor: 'pointer',
+                transition: 'transform 0.2s'
+              }}
+            >
+              <span style={{ fontSize: '0.8rem', color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Anúncios Duplicados</span>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#c084fc', marginTop: '0.25rem' }}>{duplicateListingsList.length}</div>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Mesmo SKU de outro anúncio (isolados)</span>
             </div>
           </div>
 
@@ -623,7 +712,7 @@ export default function PadronizacaoPage() {
           </div>
 
           {/* Navegação de Abas Unificada */}
-          <div style={{ borderBottom: '1px solid #334155', marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
+          <div style={{ borderBottom: '1px solid #334155', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <button
               onClick={() => setActiveTab('kits')}
               style={{
@@ -673,6 +762,25 @@ export default function PadronizacaoPage() {
               }}
             >
               🚨 Central de Erros ({errorCenterKitsList.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('duplicates')}
+              style={{
+                padding: '0.75rem 1.25rem',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === 'duplicates' ? '3px solid #c084fc' : 'none',
+                color: activeTab === 'duplicates' ? '#c084fc' : '#94a3b8',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}
+            >
+              📑 Duplicados ({duplicateListingsList.length})
             </button>
           </div>
 
@@ -1276,6 +1384,149 @@ export default function PadronizacaoPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ABA 4: ANÚNCIOS DUPLICADOS (MESMO SKU) */}
+          {activeTab === 'duplicates' && (
+            <div style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    📑 Anúncios Duplicados ({duplicateListingsList.length})
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '0.25rem', lineHeight: '1.4' }}>
+                    Estes anúncios geraram exatamente os mesmos SKUs de Kit que anúncios anteriores. O primeiro anúncio foi preservado na aba <strong>Formação dos Kits</strong> para exportação ao UpSeller, e os anúncios duplicados abaixo foram isolados nesta aba para evitar conflitos de SKUs repetidos na importação.
+                  </p>
+                </div>
+
+                {/* Filtro de Busca */}
+                <input
+                  type="text"
+                  placeholder="🔍 Buscar por ID ou Título..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{
+                    padding: '0.6rem 1rem',
+                    borderRadius: '8px',
+                    background: '#1e293b',
+                    border: '1px solid #334155',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    minWidth: '260px'
+                  }}
+                />
+              </div>
+
+              {duplicateListingsList.length === 0 ? (
+                <div style={{ padding: '3.5rem 1rem', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
+                  <div style={{ fontWeight: 600, fontSize: '1.1rem', color: '#cbd5e1' }}>Nenhum anúncio duplicado encontrado</div>
+                  <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>Todos os anúncios processados geraram conjuntos de SKUs de kits únicos.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {duplicateListingsList
+                    .filter(item => {
+                      if (!searchTerm.trim()) return true
+                      const term = searchTerm.toLowerCase()
+                      return item.listingId.toLowerCase().includes(term) || item.title.toLowerCase().includes(term) || (item.duplicateOfListingId || '').toLowerCase().includes(term)
+                    })
+                    .map((item, idx) => (
+                      <div
+                        key={item.listingId || idx}
+                        style={{
+                          background: '#1a1e2e',
+                          border: '1px solid #4c1d95',
+                          borderRadius: '10px',
+                          padding: '1.25rem',
+                          display: 'grid',
+                          gridTemplateColumns: 'auto 1fr auto',
+                          gap: '1.25rem',
+                          alignItems: 'center'
+                        }}
+                      >
+                        {/* Foto do Anúncio Duplicado com Hover e Click */}
+                        <div style={{ width: '90px', height: '90px', borderRadius: '8px', overflow: 'hidden', background: '#0f172a', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt=""
+                              onClick={() => setModalImg(item.imageUrl)}
+                              onMouseEnter={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect()
+                                setHoveredImg({ url: item.imageUrl, x: rect.right, y: rect.top })
+                              }}
+                              onMouseLeave={() => setHoveredImg(null)}
+                              style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-in', background: '#fff' }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: '1.5rem', color: '#64748b' }}>📷</span>
+                          )}
+                        </div>
+
+                        {/* Detalhes do Anúncio Duplicado */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: '#581c87',
+                              color: '#e9d5ff',
+                              border: '1px solid #7e22ce'
+                            }}>
+                              DUPLICADO
+                            </span>
+                            <span style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.95rem' }}>{item.listingId}</span>
+                            <span style={{ fontSize: '0.8rem', color: '#f59e0b', background: '#451a03', padding: '0.15rem 0.5rem', borderRadius: '4px', border: '1px solid #78350f' }}>
+                              ⚠️ Duplicado do anúncio: <strong style={{ color: '#fbbf24' }}>{item.duplicateOfListingId}</strong>
+                            </span>
+                          </div>
+
+                          <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.9rem', marginBottom: '0.35rem', lineHeight: '1.4' }}>
+                            {item.title}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.8rem', color: '#94a3b8' }}>
+                            {item.kitSku && (
+                              <span>SKU do Kit: <strong style={{ color: '#34d399', fontFamily: 'monospace' }}>{item.kitSku}</strong></span>
+                            )}
+                            {item.generatedKitRows && item.generatedKitRows.length > 0 && (
+                              <span>• Total de Variações: <strong style={{ color: '#e2e8f0' }}>{item.generatedKitRows.length} linhas</strong></span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Ação para enviar para Central de Erros caso queira alterar produtos */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '180px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveDuplicateToErrorCenter(item)}
+                            style={{
+                              padding: '0.65rem 1rem',
+                              borderRadius: '6px',
+                              background: '#7c3aed',
+                              color: '#fff',
+                              fontWeight: 600,
+                              fontSize: '0.825rem',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.4rem',
+                              boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.3)'
+                            }}
+                          >
+                            ✏️ Mudar Componentes
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </>

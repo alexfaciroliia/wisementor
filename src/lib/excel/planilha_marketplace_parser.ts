@@ -53,11 +53,25 @@ export interface ProcessedListingResult {
   title: string
   cleanTitle: string
   statusMarketplace: string
-  listingStatus: 'pending' | 'standardized' | 'ignored_conjunto' | 'ambiguous_error' | 'blocked_error' | 'unreconciled'
+  listingStatus: 'pending' | 'standardized' | 'ignored_conjunto' | 'ambiguous_error' | 'blocked_error' | 'unreconciled' | 'duplicate'
   detectedType: 'simple' | 'kit' | 'conjunto' | 'unknown'
   kitSku?: string
   generatedKitRows: GeneratedKitRow[]
   errorLogs: ErrorLogItem[]
+}
+
+export interface DuplicateKitListingItem {
+  listingId: string
+  title: string
+  cleanTitle: string
+  imageUrl: string
+  statusMarketplace: string
+  kitSku?: string
+  duplicateOfListingId: string
+  duplicateOfTitle: string
+  generatedKitRows: GeneratedKitRow[]
+  rawRows: MarketplaceListingRow[]
+  reason: string
 }
 
 export interface ParseMarketplaceResult {
@@ -65,6 +79,8 @@ export interface ParseMarketplaceResult {
   allListings: ProcessedListingResult[]
   errorLogs: ErrorLogItem[]
   errorCenterKits: ErrorCenterKitItem[]
+  duplicateListings: DuplicateKitListingItem[]
+  visionLogs?: VisionProcessingLog[]
 }
 
 // 1. Normalização para busca fuzzy tolerante
@@ -504,7 +520,7 @@ export function processMarketplaceListings(
     allListings.push({ listingId, title: rawTitle, cleanTitle, statusMarketplace: firstRow.status || 'ativo', listingStatus: 'standardized', detectedType: 'kit', kitSku: itemKitRows[0]?.kitSku, generatedKitRows: itemKitRows, errorLogs: [] })
   }
 
-  return { kitsRows, allListings, errorLogs: globalErrorLogs, errorCenterKits: [] }
+  return { kitsRows, allListings, errorLogs: globalErrorLogs, errorCenterKits: [], duplicateListings: [] }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -591,6 +607,8 @@ export async function processMarketplaceListingsWithVision(
   const globalErrorLogs: ErrorLogItem[] = []
   const visionLogs: VisionProcessingLog[] = []
   const errorCenterKits: ErrorCenterKitItem[] = []
+  const duplicateListings: DuplicateKitListingItem[] = []
+  const seenKitSkusMap = new Map<string, { listingId: string; title: string }>()
 
   const listingsMap = new Map<string, MarketplaceListingRow[]>()
   for (const row of marketplaceRows) {
@@ -868,6 +886,67 @@ export async function processMarketplaceListingsWithVision(
       categoryRules
     )
 
+    // 5. VERIFICAÇÃO DE ANÚNCIOS DUPLICADOS (MESMOS SKUS DE KITS)
+    // O primeiro anúncio permanece na aba "Formação dos Kits".
+    // Os anúncios subsequentes com os mesmos SKUs são enviados para a aba "Duplicados".
+    const firstMatchingDup = generatedRows.find(r => seenKitSkusMap.has(r.kitSku))
+    const duplicateOf = firstMatchingDup ? seenKitSkusMap.get(firstMatchingDup.kitSku) : null
+
+    if (duplicateOf && duplicateOf.listingId !== listingId) {
+      const dupItem: DuplicateKitListingItem = {
+        listingId,
+        title: rawTitle,
+        cleanTitle,
+        imageUrl: currentImgUrl,
+        statusMarketplace: firstRow.status || 'ativo',
+        kitSku,
+        duplicateOfListingId: duplicateOf.listingId,
+        duplicateOfTitle: duplicateOf.title,
+        generatedKitRows: generatedRows,
+        rawRows: rows,
+        reason: `Este anúncio gerou SKUs de Kit idênticos ao anúncio anterior "${duplicateOf.listingId}".`
+      }
+      duplicateListings.push(dupItem)
+
+      const dupLog: ErrorLogItem = {
+        type: 'AVISO',
+        clientRow: firstRow.rowIdx,
+        productName: rawTitle,
+        field: 'Anúncio Duplicado',
+        originalValue: rawTitle,
+        correctedValue: `Duplicado de ${duplicateOf.listingId}`,
+        message: `Anúncio duplicado com os mesmos SKUs de kit do anúncio ${duplicateOf.listingId}. Movido para a aba Duplicados.`,
+        generatedFile: 'Kits',
+        upSellerLineRange: '-',
+        imageUrl: currentImgUrl
+      }
+      globalErrorLogs.push(dupLog)
+
+      allListings.push({
+        listingId,
+        title: rawTitle,
+        cleanTitle,
+        statusMarketplace: firstRow.status || 'ativo',
+        listingStatus: 'duplicate',
+        detectedType: 'kit',
+        kitSku,
+        generatedKitRows: generatedRows,
+        errorLogs: [dupLog]
+      })
+
+      continue
+    }
+
+    // Registrar SKUs gerados pelo primeiro anúncio para controle de duplicatas
+    generatedRows.forEach(r => {
+      if (r.kitSku && !seenKitSkusMap.has(r.kitSku)) {
+        seenKitSkusMap.set(r.kitSku, { listingId, title: rawTitle })
+      }
+    })
+    if (kitSku && !seenKitSkusMap.has(kitSku)) {
+      seenKitSkusMap.set(kitSku, { listingId, title: rawTitle })
+    }
+
     kitsRows.push(...generatedRows)
 
     allListings.push({
@@ -883,5 +962,5 @@ export async function processMarketplaceListingsWithVision(
     })
   }
 
-  return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs, errorCenterKits }
+  return { kitsRows, allListings, errorLogs: globalErrorLogs, visionLogs, errorCenterKits, duplicateListings }
 }
