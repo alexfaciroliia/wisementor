@@ -169,25 +169,23 @@ export async function POST(req: NextRequest) {
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
 
-    if (titleHint && titleHint.trim()) {
-      parts.push({
-        text: `\nTÍTULO DO ANÚNCIO (DICA DE CONTEXTO): "${titleHint.trim()}"\n`
-      })
-    }
-
     parts.push({
-      text: `REGRAS DE COMPARAÇÃO VISUAL:
-1. IDENTIFICAÇÃO DE PRODUTOS: Compare os itens da foto do anúncio com as imagens de referência do armazém. Identifique o código SPU de cada produto presente na foto (ex: se a foto mostra um Tênis modelo LC-400 e um Fone I12, identifique ["LC-400", "I12"]).
-2. CORES E VARIAÇÕES: O mesmo produto SPU pode aparecer na foto em qualquer uma de suas cores de referência (ex: Tênis LC-400 cinza, azul ou preto é o SPU "LC-400").
-3. CONTAGEM TOTAL DE ITENS: Conte quantos produtos físicos distintos aparecem na foto do anúncio.
-4. PRODUTOS NÃO CADASTRADOS: Se a foto contiver algum produto que NÃO corresponda a nenhum produto do armazém, liste em "unmapped_items".
+      text: `REGRAS ESTRITAS DE COMPARAÇÃO VISUAL (DESIGN E MODELO EXATOS):
+1. COMPARAÇÃO RIGOROSA DE MODELO E DESIGN:
+   - Você DEVE examinar minuciosamente detalhes como: formato do bico, costuras, frisos, fivelas metálicas, fechos, cadarços, solado, botões e texturas.
+   - NÃO associe um SPU se o produto na foto do anúncio for de um modelo ou formato diferente da foto de referência do armazém.
+   - Exemplo de Sapato Social: A foto de referência do SPU "FN-6012" possui uma FIVELA METÁLICA RETANGULAR no peito do pé e FRISOS/COSTURAS HORIZONTAIS marcadas. Se o sapato do anúncio for liso, sem fivela ou com outro design de costura, ELE NÃO É O FN-6012! Você DEVE classificá-lo como "UNMAPPED_Sapato Social Liso" e NÃO associar o FN-6012.
+   - Exemplo de Relógio: Se a foto mostra um relógio com display quadrado, ele corresponde ao "V20" (Quadrado); se tem display fino/alongado, corresponde ao "V5" (Slim); se for analógico com ponteiros, corresponde ao "V30" (Analógico). Não troque modelos.
+2. CORES: O produto pode estar em qualquer uma das cores de referência do mesmo SPU (ex: Tênis LC-400 cinza ou azul marinho), DESDE QUE o design, formato e costura sejam IDÊNTICOS ao modelo de referência.
+3. CONTAGEM TOTAL DE ITENS: Conte quantos produtos físicos distintos estão expostos na foto do anúncio.
+4. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Qualquer produto na foto que não seja IDÊNTICO em modelo/design a um dos produtos de referência do armazém DEVE ser retornado em "unmapped_items".
 5. FORMATO DA RESPOSTA (JSON):
-Responda EXCLUSIVAMENTE em formato JSON com a seguinte estrutura:
+Responda EXCLUSIVAMENTE em formato JSON:
 {
   "total_items_in_photo": <número total de itens físicos visíveis na foto>,
   "matched_spus": ["<SPU1>", "<SPU2>"],
-  "unmapped_items": ["<Descrição de item que não é de nenhum produto do armazém>"],
-  "reasoning": "<Breve explicação da identificação visual>"
+  "unmapped_items": ["<Descrição dos itens na foto que não correspondem a nenhum modelo do armazém>"],
+  "reasoning": "<Explicação objetiva dos detalhes visuais comparados>"
 }`
     })
 

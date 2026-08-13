@@ -711,44 +711,8 @@ export async function processMarketplaceListingsWithVision(
           totalItemsInPhoto = totalCount
           visionConfidence = (identified.length >= 2 && unmapped.length === 0) ? 'high' : identified.length >= 1 ? 'medium' : 'low'
         }
-
-        // Fallback Inteligente por Título: se o Vision AI não identificou componentes
-        if (componentSPUs.length === 0) {
-          const kitComponents = extractKitComponents(rawTitle)
-          const fallbackSpus: string[] = []
-          for (const compName of kitComponents) {
-            const found = findBestProductForComponent(compName, targetProducts, categoryRules)
-            if (found) {
-              const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-              if (!fallbackSpus.includes(cleanSpu)) fallbackSpus.push(cleanSpu)
-            }
-          }
-          if (fallbackSpus.length >= 2 || (fallbackSpus.length >= 1 && kitComponents.length === 1)) {
-            componentSPUs = fallbackSpus
-            fallbackUsed = true
-            fallbackReason = 'Identificado por correspondência de título (Vision AI sem retorno)'
-            totalItemsInPhoto = fallbackSpus.length
-            visionConfidence = 'fallback_title'
-          }
-        }
       } catch (visionErr: any) {
         fallbackReason = `Vision error: ${visionErr.message}`
-        // Fallback por Título em caso de erro de rede ou quota do Vision AI
-        const kitComponents = extractKitComponents(rawTitle)
-        const fallbackSpus: string[] = []
-        for (const compName of kitComponents) {
-          const found = findBestProductForComponent(compName, targetProducts, categoryRules)
-          if (found) {
-            const cleanSpu = sanitizeText(found.spu).toUpperCase().replace(/\s+/g, '-')
-            if (!fallbackSpus.includes(cleanSpu)) fallbackSpus.push(cleanSpu)
-          }
-        }
-        if (fallbackSpus.length >= 2 || (fallbackSpus.length >= 1 && kitComponents.length === 1)) {
-          componentSPUs = fallbackSpus
-          fallbackUsed = true
-          totalItemsInPhoto = fallbackSpus.length
-          visionConfidence = 'fallback_title'
-        }
       }
     }
 
