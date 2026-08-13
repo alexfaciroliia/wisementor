@@ -671,6 +671,7 @@ export async function processMarketplaceListingsWithVision(
   const errorCenterKits: ErrorCenterKitItem[] = []
   const duplicateListings: DuplicateKitListingItem[] = []
   const seenKitSkusMap = new Map<string, { listingId: string; title: string }>()
+  const seenListingsByTitleImage = new Map<string, { listingId: string; title: string }>()
 
   const listingsMap = new Map<string, MarketplaceListingRow[]>()
   for (const row of marketplaceRows) {
@@ -722,10 +723,59 @@ export async function processMarketplaceListingsWithVision(
       continue
     }
 
+    const imgUrl = (firstRow.imageUrl || '').trim()
+    const photoTitleKey = `${cleanTitle.toLowerCase()}___${imgUrl}`
+
+    if (seenKitSkusMap.size > 0 || seenListingsByTitleImage.size > 0) {
+      const existingListing = seenListingsByTitleImage.get(photoTitleKey)
+      if (existingListing && existingListing.listingId !== listingId) {
+        const dupItem: DuplicateKitListingItem = {
+          listingId,
+          title: rawTitle,
+          cleanTitle,
+          imageUrl: imgUrl,
+          statusMarketplace: firstRow.status || 'ativo',
+          kitSku: `DUPLICADO-${existingListing.listingId}`,
+          duplicateOfListingId: existingListing.listingId,
+          duplicateOfTitle: existingListing.title,
+          generatedKitRows: [],
+          rawRows: rows,
+          reason: `Anúncio duplicado com a mesma foto e título do anúncio anterior "${existingListing.listingId}".`
+        }
+        duplicateListings.push(dupItem)
+
+        const dupLog: ErrorLogItem = {
+          type: 'AVISO',
+          clientRow: firstRow.rowIdx,
+          productName: rawTitle,
+          field: 'Anúncio Duplicado',
+          originalValue: rawTitle,
+          correctedValue: `Duplicado de ${existingListing.listingId}`,
+          message: `Anúncio com foto e título idênticos ao anúncio ${existingListing.listingId}. Movido para a aba Duplicados.`,
+          generatedFile: 'Kits',
+          upSellerLineRange: '-',
+          imageUrl: imgUrl
+        }
+        globalErrorLogs.push(dupLog)
+
+        allListings.push({
+          listingId,
+          title: rawTitle,
+          cleanTitle,
+          statusMarketplace: firstRow.status || 'ativo',
+          listingStatus: 'duplicate',
+          detectedType: 'kit',
+          generatedKitRows: [],
+          errorLogs: [dupLog]
+        })
+        continue
+      }
+    }
+    seenListingsByTitleImage.set(photoTitleKey, { listingId, title: rawTitle })
+
     kitIdx++
     onProgress?.(kitIdx, kitEntries.length, listingId)
 
-    const imgUrl = (firstRow.imageUrl || '').trim()
     let componentSPUs: string[] = []
     let visionUsed = false
     let fallbackUsed = false

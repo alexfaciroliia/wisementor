@@ -201,13 +201,14 @@ Responda EXCLUSIVAMENTE em formato JSON:
 }`
     })
 
-    // 5. Chamar Gemini 3.5 Flash Lite (alta capacidade de requisições e ultra-rápido)
+    // 5. Chamar Gemini 3.5 Flash Lite (temperatura 0 para 100% determinismo)
     const ai = new GoogleGenAI({ apiKey })
     let response: any = null
     try {
       response = await ai.models.generateContent({
         model: 'gemini-3.5-flash-lite',
-        contents: [{ parts }]
+        contents: [{ parts }],
+        config: { temperature: 0 }
       })
     } catch (modelErr: any) {
       console.warn('[vision/identify-kit] Fallback para gemini-3.1-flash-lite devido a:', modelErr.message)
@@ -215,13 +216,15 @@ Responda EXCLUSIVAMENTE em formato JSON:
         await new Promise(resolve => setTimeout(resolve, 500))
         response = await ai.models.generateContent({
           model: 'gemini-3.1-flash-lite',
-          contents: [{ parts }]
+          contents: [{ parts }],
+          config: { temperature: 0 }
         })
       } catch (retryErr: any) {
         console.warn('[vision/identify-kit] Fallback para gemini-3.5-flash devido a:', retryErr.message)
         response = await ai.models.generateContent({
           model: 'gemini-3.5-flash',
-          contents: [{ parts }]
+          contents: [{ parts }],
+          config: { temperature: 0 }
         })
       }
     }
