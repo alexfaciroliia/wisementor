@@ -360,6 +360,15 @@ export function findExactWarehouseSku(
   return [spu, formattedCor, formattedTam].filter(Boolean).join('-')
 }
 
+const COLOR_SYNONYMS: Record<string, string[]> = {
+  cinza: ['chumbo', 'grafite', 'prata', 'prateado', 'cinzento', 'cinza claro', 'cinza escuro'],
+  preto: ['black', 'fosco', 'preto fosco', 'onix', 'preto liso'],
+  'azul marinho': ['marinho', 'navy', 'azul escuro', 'azul-marinho', 'azul'],
+  branco: ['off white', 'off-white', 'gelo', 'neve', 'white', 'branca'],
+  marrom: ['cafe', 'café', 'havana', 'chocolate', 'caramelo', 'whisky', 'tabaco'],
+  vinho: ['bordo', 'bordô', 'marsala', 'rubi', 'vermelho']
+}
+
 export function checkWarehouseColorSizeReconciliation(
   spu: string,
   cor: string,
@@ -385,11 +394,26 @@ export function checkWarehouseColorSizeReconciliation(
     return { isReconciled: true, availableColors, availableSizes }
   }
 
-  const matchedProd = spuProducts.find(p => {
+  // 1. Busca direta ou por substring
+  let matchedProd = spuProducts.find(p => {
     const pCor = normalizeForMatch(p.color)
     const pSku = normalizeForMatch(p.sku)
     return (pCor === normCor || (normCor && pCor.includes(normCor)) || (normCor && normCor.includes(pCor)) || (normCor && pSku.includes(normCor)))
   })
+
+  // 2. Busca por sinônimos conhecidos (ex: Chumbo -> Cinza, Marinho -> Azul Marinho)
+  if (!matchedProd && normCor) {
+    matchedProd = spuProducts.find(p => {
+      const pCor = normalizeForMatch(p.color)
+      for (const [canonicalColor, synonyms] of Object.entries(COLOR_SYNONYMS)) {
+        const canonicalNorm = normalizeForMatch(canonicalColor)
+        const isTargetMatch = pCor === canonicalNorm || pCor.includes(canonicalNorm)
+        const isInputSynonym = synonyms.some(s => normalizeForMatch(s) === normCor || normCor.includes(normalizeForMatch(s)))
+        if (isTargetMatch && isInputSynonym) return true
+      }
+      return false
+    })
+  }
 
   return {
     isReconciled: Boolean(matchedProd),

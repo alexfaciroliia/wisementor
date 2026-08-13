@@ -175,11 +175,10 @@ export async function POST(req: NextRequest) {
    - Você DEVE examinar minuciosamente detalhes como: formato do bico, costuras, frisos, fivelas metálicas, fechos, cadarços, solado, botões e texturas.
    - NÃO associe um SPU se o produto na foto do anúncio for de um modelo ou formato diferente da foto de referência do armazém.
    - Exemplo de Sapato Social: A foto de referência do SPU "FN-6012" possui uma FIVELA METÁLICA RETANGULAR no peito do pé e FRISOS/COSTURAS HORIZONTAIS marcadas. Se o sapato do anúncio for liso, sem fivela ou com outro design de costura, ELE NÃO É O FN-6012! Você DEVE classificá-lo como "UNMAPPED_Sapato Social Liso" e NÃO associar o FN-6012.
-   - Exemplo de Relógio: Se a foto mostra um relógio com display quadrado, ele corresponde ao "V20" (Quadrado); se tem display fino/alongado, corresponde ao "V5" (Slim); se for analógico com ponteiros, corresponde ao "V30" (Analógico). Não troque modelos.
-2. CORES: O produto pode estar em qualquer uma das cores de referência do mesmo SPU (ex: Tênis LC-400 cinza ou azul marinho), DESDE QUE o design, formato e costura sejam IDÊNTICOS ao modelo de referência.
+2. CORES E ILUMINAÇÃO DE FOTOGRAFIA: O produto pode estar em qualquer uma das cores de referência do mesmo SPU (ex: Tênis LC-400 nas cores Cinza, Azul Marinho, Branco, Preto). Variações de iluminação de estúdio (ex: tecido mesh do tênis cinza/chumbo parecendo acinzentado claro com reflexo frio/lilás/azulado) correspondem ao SPU "LC-400" (Cinza), DESDE QUE o formato da sola, as tiras/suportes laterais e a estrutura física sejam IDÊNTICOS ao modelo de referência.
 3. ELEMENTOS DE CENÁRIO/DECORAÇÃO (IGNORAR): Livros de apoio, caixas onde os sapatos ficam apoiados, vasos de plantas, mesas, tapetes e fundos são meramente decorativos e NÃO SÃO produtos de venda. NÃO os conte no total de itens e NÃO os adicione em unmapped_items.
-4. CONTAGEM TOTAL DE PRODUTOS DE VENDA: Conte quantos produtos físicos reais de venda estão expostos na foto (ex: 1 sapato + 1 relógio + 1 cinto = 3 produtos).
-5. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Apenas produtos reais de venda (calçados, acessórios) que não correspondam a nenhum modelo de referência devem ser listados em "unmapped_items".
+4. CONTAGEM TOTAL DE PRODUTOS DE VENDA: Conte quantos produtos físicos reais de venda estão expostos na foto (ex: 1 tênis + 1 relógio + 1 fone = 3 produtos; 1 tênis + 1 fone = 2 produtos).
+5. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Apenas produtos reais de venda (calçados, acessórios) com formato físico ou modelo completamente diferente dos produtos de referência devem ser listados em "unmapped_items".
 6. FORMATO DA RESPOSTA (JSON):
 Responda EXCLUSIVAMENTE em formato JSON:
 {
