@@ -24,10 +24,17 @@ export interface VisionIdentifyResponse {
   error?: string
 }
 
-// Helper: baixar imagem e converter para base64 com timeout curto
+// Cache em memória global no servidor para evitar re-downloads repetidos do Supabase Storage
+const globalImageCache = new Map<string, { base64: string; mimeType: string }>()
+
+// Helper: baixar imagem e converter para base64 com cache e timeout
 async function fetchImageBase64(url: string, timeoutMs = 12000): Promise<{ base64: string; mimeType: string } | null> {
+  const cleanUrl = url.trim().replace(/^http:\/\//i, 'https://')
+  if (globalImageCache.has(cleanUrl)) {
+    return globalImageCache.get(cleanUrl)!
+  }
+
   try {
-    const cleanUrl = url.trim().replace(/^http:\/\//i, 'https://')
     const res = await fetch(cleanUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
       signal: AbortSignal.timeout(timeoutMs),
@@ -41,7 +48,9 @@ async function fetchImageBase64(url: string, timeoutMs = 12000): Promise<{ base6
 
     const arrayBuffer = await res.arrayBuffer()
     const base64 = Buffer.from(arrayBuffer).toString('base64')
-    return { base64, mimeType }
+    const item = { base64, mimeType }
+    globalImageCache.set(cleanUrl, item)
+    return item
   } catch {
     return null
   }
@@ -182,20 +191,26 @@ Responda EXCLUSIVAMENTE em formato JSON com a seguinte estrutura:
 }`
     })
 
-    // 5. Chamar Gemini 3.5 Flash (com fallback para gemini-flash-latest)
+    // 5. Chamar Gemini Flash Latest (com retry para resiliência)
     const ai = new GoogleGenAI({ apiKey })
     let response: any = null
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: [{ parts }]
-      })
-    } catch (modelErr: any) {
-      console.warn('[vision/identify-kit] Fallback de modelo acionado devido a:', modelErr.message)
-      response = await ai.models.generateContent({
         model: 'gemini-flash-latest',
         contents: [{ parts }]
       })
+    } catch (modelErr: any) {
+      console.warn('[vision/identify-kit] Retry com gemini-3.5-flash devido a:', modelErr.message)
+      try {
+        await new Promise(resolve => setTimeout(resolve, 800))
+        response = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: [{ parts }]
+        })
+      } catch (retryErr: any) {
+        console.error('[vision/identify-kit] Erro após retry:', retryErr.message)
+        throw retryErr
+      }
     }
 
     const rawText = (response.text || '').trim()
