@@ -290,15 +290,16 @@ export function findExactWarehouseSku(
   spu: string,
   cor: string,
   tam: string,
-  targetProducts: WarehouseProductItem[]
+  targetProducts: WarehouseProductItem[],
+  colorMappings?: Record<string, string>
 ): string {
   const normSpu = spu.toUpperCase()
   const cleanTamVal = tam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim()
   const normCor = normalizeForMatch(cor)
   const normTam = normalizeForMatch(cleanTamVal)
 
-  // 1. Busca exata por SPU + Cor + Tamanho (ou SKU contendo a cor e tamanho)
-  const exactMatch = targetProducts.find(p => {
+  // 1. Busca exata de SPU + Cor + Tamanho
+  let exactMatch = targetProducts.find(p => {
     const pSpu = p.spu.toUpperCase()
     const pCor = normalizeForMatch(p.color)
     const pTam = normalizeForMatch(p.size)
@@ -306,10 +307,30 @@ export function findExactWarehouseSku(
 
     const spuMatches = pSpu === normSpu || pSku.startsWith(normalizeForMatch(spu))
     const corMatches = normCor && (pCor === normCor || pCor.includes(normCor) || normCor.includes(pCor) || pSku.includes(normCor))
-    const tamMatches = normTam && (pTam === normTam || pTam.includes(normTam) || normTam.includes(pTam) || pSku.endsWith(normTam))
+    const tamMatches = normTam && (pTam === normTam || pSku.endsWith(normTam) || pSku.includes(`-${normTam}`))
 
     return spuMatches && (corMatches || !normCor) && (tamMatches || !normTam)
   })
+
+  // 1b. Se não encontrou, verificar se há de-para de cor configurado para o cliente
+  if (!exactMatch && normCor && colorMappings) {
+    for (const [inputColor, mappedColor] of Object.entries(colorMappings)) {
+      if (normalizeForMatch(inputColor) === normCor || normCor.includes(normalizeForMatch(inputColor))) {
+        const normMapped = normalizeForMatch(mappedColor)
+        exactMatch = targetProducts.find(p => {
+          const pSpu = p.spu.toUpperCase()
+          const pCor = normalizeForMatch(p.color)
+          const pTam = normalizeForMatch(p.size)
+          const pSku = normalizeForMatch(p.sku)
+          const spuMatches = pSpu === normSpu || pSku.startsWith(normalizeForMatch(spu))
+          const corMatches = pCor === normMapped || pCor.includes(normMapped) || pSku.includes(normMapped)
+          const tamMatches = normTam && (pTam === normTam || pSku.endsWith(normTam) || pSku.includes(`-${normTam}`))
+          return spuMatches && corMatches && (tamMatches || !normTam)
+        })
+        if (exactMatch) break
+      }
+    }
+  }
 
   if (exactMatch && exactMatch.sku) {
     return exactMatch.sku
@@ -373,7 +394,8 @@ export function checkWarehouseColorSizeReconciliation(
   spu: string,
   cor: string,
   tam: string,
-  targetProducts: WarehouseProductItem[]
+  targetProducts: WarehouseProductItem[],
+  colorMappings?: Record<string, string>
 ): {
   isReconciled: boolean
   matchedColor?: string
@@ -401,7 +423,21 @@ export function checkWarehouseColorSizeReconciliation(
     return (pCor === normCor || (normCor && pCor.includes(normCor)) || (normCor && normCor.includes(pCor)) || (normCor && pSku.includes(normCor)))
   })
 
-  // 2. Busca por sinônimos conhecidos (ex: Chumbo -> Cinza, Marinho -> Azul Marinho)
+  // 2. Busca por De-Para de cores configurado no cliente (colorMappings)
+  if (!matchedProd && normCor && colorMappings) {
+    for (const [inputColor, mappedColor] of Object.entries(colorMappings)) {
+      if (normalizeForMatch(inputColor) === normCor || normCor.includes(normalizeForMatch(inputColor))) {
+        const normMapped = normalizeForMatch(mappedColor)
+        matchedProd = spuProducts.find(p => {
+          const pCor = normalizeForMatch(p.color)
+          return pCor === normMapped || pCor.includes(normMapped) || normMapped.includes(pCor)
+        })
+        if (matchedProd) break
+      }
+    }
+  }
+
+  // 3. Busca por sinônimos conhecidos (ex: Chumbo -> Cinza, Marinho -> Azul Marinho)
   if (!matchedProd && normCor) {
     matchedProd = spuProducts.find(p => {
       const pCor = normalizeForMatch(p.color)
@@ -572,7 +608,8 @@ export function buildKitRowsForListing(
   componentSpus: string[],
   targetProducts: WarehouseProductItem[],
   categoryRules: ClientCategoryRule[] = [],
-  colorOverride?: string
+  colorOverride?: string,
+  colorMappings?: Record<string, string>
 ): { generatedRows: GeneratedKitRow[]; kitSku: string } {
   const updatedRows: GeneratedKitRow[] = []
   const cleanTitle = (listing.title || '').replace(/\s+/g, ' ').trim()
@@ -585,7 +622,7 @@ export function buildKitRowsForListing(
     const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
 
     // Verificar se a cor original da variação já bate com o armazém ou se usa override do de-para
-    const checkRes = checkWarehouseColorSizeReconciliation(spus[0] || '', rowCorRaw, tam, targetProducts)
+    const checkRes = checkWarehouseColorSizeReconciliation(spus[0] || '', rowCorRaw, tam, targetProducts, colorMappings)
     const rowColor = (checkRes.isReconciled && checkRes.matchedColor) ? checkRes.matchedColor : (colorOverride || rowCorRaw || 'UNICA')
 
     const cleanCor = removeAccentsAndCedilla(rowColor).replace(/ç/gi, 'c').replace(/\s+/g, '').toUpperCase() || 'UNICA'
@@ -597,7 +634,7 @@ export function buildKitRowsForListing(
     const imgForRow = (variationRow.imageUrl || listing.imageUrl || '').trim()
 
     for (const compSpu of spus) {
-      const officialWarehouseSku = findExactWarehouseSku(compSpu, rowColor, tam, targetProducts)
+      const officialWarehouseSku = findExactWarehouseSku(compSpu, rowColor, tam, targetProducts, colorMappings)
       const kitRow: GeneratedKitRow = {
         kitSku,
         title: cleanTitle,
@@ -623,7 +660,8 @@ export async function processMarketplaceListingsWithVision(
   ignoreKeywords: string[] = ['conjunto'],
   visionFn?: VisionIdentifyFn,
   onProgress?: (current: number, total: number, listingId: string) => void,
-  categoryRules: ClientCategoryRule[] = []
+  categoryRules: ClientCategoryRule[] = [],
+  colorMappings?: Record<string, string>
 ): Promise<ParseMarketplaceResult & { visionLogs: VisionProcessingLog[] }> {
 
   const kitsRows: GeneratedKitRow[] = []
@@ -839,7 +877,7 @@ export async function processMarketplaceListingsWithVision(
       const tam = rawTam.replace(/\s*BR\b/gi, '').replace(/\bBR\s*/gi, '').replace(/BR$/i, '').replace(/^BR/i, '').trim() || 'U'
 
       for (const compSpu of componentSPUs) {
-        const checkRes = checkWarehouseColorSizeReconciliation(compSpu, cor, tam, targetProducts)
+        const checkRes = checkWarehouseColorSizeReconciliation(compSpu, cor, tam, targetProducts, colorMappings)
         if (!checkRes.isReconciled) {
           isUnreconciled = true
           unreconciledDetail = {
@@ -908,7 +946,9 @@ export async function processMarketplaceListingsWithVision(
       { listingId, title: rawTitle, imageUrl: currentImgUrl, rows },
       componentSPUs,
       targetProducts,
-      categoryRules
+      categoryRules,
+      undefined,
+      colorMappings
     )
 
     // 5. VERIFICAÇÃO DE ANÚNCIOS DUPLICADOS (MESMOS SKUS DE KITS)

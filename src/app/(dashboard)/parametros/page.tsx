@@ -14,6 +14,12 @@ export default function ParametrosPage() {
   const [ignoreKeywords, setIgnoreKeywords] = useState<string>('conjunto')
   const [autoStandardize, setAutoStandardize] = useState<boolean>(true)
 
+  // Estados de Parâmetros de Visão Computacional (IA) & Cores
+  const [visionInstructions, setVisionInstructions] = useState<string>('')
+  const [ignoredProps, setIgnoredProps] = useState<string>('livros, caixas de apoio, vasos, plantas, mesas, tapetes, fundos decorativos')
+  const [visionSensitivity, setVisionSensitivity] = useState<'strict' | 'moderate'>('strict')
+  const [colorMappingsList, setColorMappingsList] = useState<{ id: string; from: string; to: string }[]>([])
+
   // Estados de Credenciais & Cookies do UpSeller
   const [upsellerEmail, setUpsellerEmail] = useState<string>('')
   const [upsellerPassword, setUpsellerPassword] = useState<string>('')
@@ -32,11 +38,23 @@ export default function ParametrosPage() {
       setLoading(true)
       setMessage(null)
 
-      // 1. Carregar Parâmetros de Palavras-Chave
+      // 1. Carregar Parâmetros do Cliente (Kits, Visão e Cores)
       const params = await getClientParameters(selectedClientId)
       setKitKeywords(params.kit_keywords.join(', '))
       setIgnoreKeywords(params.ignore_keywords.join(', '))
       setAutoStandardize(params.auto_standardize_simples ?? true)
+      setVisionInstructions(params.vision_instructions || '')
+      setIgnoredProps((params.ignored_props && params.ignored_props.length > 0)
+        ? params.ignored_props.join(', ')
+        : 'livros, caixas de apoio, vasos, plantas, mesas, tapetes, fundos decorativos')
+      setVisionSensitivity(params.vision_sensitivity || 'strict')
+
+      const mapEntries = Object.entries(params.color_mappings || {}).map(([from, to], idx) => ({
+        id: `map-${idx + 1}`,
+        from,
+        to
+      }))
+      setColorMappingsList(mapEntries)
 
       // 2. Carregar Credenciais & Cookies do UpSeller
       try {
@@ -71,6 +89,21 @@ export default function ParametrosPage() {
     }
     loadAllData()
   }, [selectedClientId])
+
+  function handleAddColorMapping() {
+    setColorMappingsList(prev => [
+      ...prev,
+      { id: `map-${Date.now()}`, from: '', to: '' }
+    ])
+  }
+
+  function handleRemoveColorMapping(id: string) {
+    setColorMappingsList(prev => prev.filter(m => m.id !== id))
+  }
+
+  function handleUpdateColorMapping(id: string, field: 'from' | 'to', value: string) {
+    setColorMappingsList(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m))
+  }
 
   async function handleSave() {
     if (!selectedClientId) {
@@ -111,20 +144,32 @@ export default function ParametrosPage() {
         }
       }
 
-      // 2. Salvar Parâmetros de Kits (com fallback transparente no backend)
+      // 2. Salvar Parâmetros do Cliente (Kits, Visão e Cores)
       const kitArray = kitKeywords.split(',').map(s => s.trim()).filter(Boolean)
       const ignoreArray = ignoreKeywords.split(',').map(s => s.trim()).filter(Boolean)
+      const ignoredPropsArray = ignoredProps.split(',').map(s => s.trim()).filter(Boolean)
+
+      const colorMappingsObj: Record<string, string> = {}
+      for (const item of colorMappingsList) {
+        if (item.from.trim() && item.to.trim()) {
+          colorMappingsObj[item.from.trim().toLowerCase()] = item.to.trim()
+        }
+      }
 
       await saveClientParameters({
         client_id: selectedClientId,
         kit_keywords: kitArray,
         ignore_keywords: ignoreArray,
-        auto_standardize_simples: autoStandardize
+        auto_standardize_simples: autoStandardize,
+        vision_instructions: visionInstructions,
+        color_mappings: colorMappingsObj,
+        ignored_props: ignoredPropsArray,
+        vision_sensitivity: visionSensitivity
       })
 
       setMessage({
         type: 'success',
-        text: `Todos os parâmetros, e-mail e credenciais do cliente ${selectedClient?.name || ''} foram salvos com sucesso!`
+        text: `Todos os parâmetros, diretrizes de IA, de-para de cores e credenciais do cliente ${selectedClient?.name || ''} foram salvos com sucesso!`
       })
 
       if (upsellerPassword.trim()) {
@@ -258,7 +303,111 @@ export default function ParametrosPage() {
               </div>
             </div>
 
-            {/* SEÇÃO 2: CREDENCIAIS E COOKIES UPSELLER */}
+            {/* SEÇÃO 2: DIRETRIZES DA VISÃO COMPUTACIONAL (IA) */}
+            <div style={{ borderBottom: '1px solid #2a2e3d', paddingBottom: '1.75rem', marginBottom: '1.75rem' }}>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🧠 Diretrizes de Visão Computacional (IA) para Este Cliente
+              </h2>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1.25rem' }}>
+                Defina instruções específicas de catálogo para o robô de IA comparar as fotos dos anúncios contra o armazém. O sistema é 100% dinâmico e transfere essas diretrizes diretamente para a IA.
+              </p>
+
+              {/* Instruções Livres da IA */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#a855f7', marginBottom: '0.4rem' }}>
+                  Instruções & Regras Visuais Customizadas:
+                </label>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                  Ex: "Examine minuciosamente detalhes construtivos como fivelas metálicas, frisos no peito do pé, formato de bico, solado e tiras laterais. Se um produto na foto tiver formato ou costura diferente da foto de referência, classifique como UNMAPPED. Tolere variações de iluminação de estúdio (ex: tecidos cinza/chumbo com reflexos frios/azulados)."
+                </p>
+                <textarea
+                  rows={4}
+                  value={visionInstructions}
+                  onChange={e => setVisionInstructions(e.target.value)}
+                  placeholder="Digite as instruções visuais específicas para o catálogo deste cliente..."
+                  style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff', fontSize: '0.9rem', lineHeight: '1.5' }}
+                />
+              </div>
+
+              {/* Adereços de Cenário a Ignorar */}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#38bdf8', marginBottom: '0.4rem' }}>
+                  🌿 Adereços de Cenário & Itens Decorativos a Ignorar (separados por vírgula):
+                </label>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                  Itens na foto que NÃO devem ser considerados produtos de venda (ex: livros de apoio, caixas, mesas, vasos de plantas, tapetes).
+                </p>
+                <input
+                  type="text"
+                  value={ignoredProps}
+                  onChange={e => setIgnoredProps(e.target.value)}
+                  placeholder="livros, caixas de apoio, vasos, plantas, mesas, tapetes, fundos decorativos"
+                  style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff', fontSize: '0.95rem' }}
+                />
+              </div>
+            </div>
+
+            {/* SEÇÃO 3: EQUIVALÊNCIA DE CORES & VARIAÇÕES (DE-PARA DO CLIENTE) */}
+            <div style={{ borderBottom: '1px solid #2a2e3d', paddingBottom: '1.75rem', marginBottom: '1.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    🎨 Equivalência de Cores & Variações (De-Para do Cliente)
+                  </h2>
+                  <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                    Mapeie sinônimos e nomes comerciais para a cor exata cadastrada no Armazém. Anúncios com essas cores serão conciliados automaticamente.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddColorMapping}
+                  style={{ padding: '0.45rem 0.9rem', borderRadius: '6px', background: '#2563eb', color: '#fff', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  ➕ Adicionar Nova Cor
+                </button>
+              </div>
+
+              {colorMappingsList.length === 0 ? (
+                <div style={{ padding: '1rem', background: '#1a1e2e', borderRadius: '8px', border: '1px dashed #334155', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                  Nenhum de-para de cor cadastrado ainda. Clique em <strong>"Adicionar Nova Cor"</strong> acima para incluir sinônimos (ex: Chumbo ➔ Cinza).
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '0.75rem' }}>
+                  {colorMappingsList.map(item => (
+                    <div
+                      key={item.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a1e2e', padding: '0.65rem 0.75rem', borderRadius: '8px', border: '1px solid #334155' }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Cor na Planilha (ex: Chumbo)"
+                        value={item.from}
+                        onChange={e => handleUpdateColorMapping(item.id, 'from', e.target.value)}
+                        style={{ flex: 1, padding: '0.45rem 0.65rem', borderRadius: '6px', background: '#0f172a', border: '1px solid #475569', color: '#38bdf8', fontSize: '0.85rem', fontWeight: 600 }}
+                      />
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700 }}>➔</span>
+                      <input
+                        type="text"
+                        placeholder="Cor no Armazém (ex: Cinza)"
+                        value={item.to}
+                        onChange={e => handleUpdateColorMapping(item.id, 'to', e.target.value)}
+                        style={{ flex: 1, padding: '0.45rem 0.65rem', borderRadius: '6px', background: '#0f172a', border: '1px solid #475569', color: '#34d399', fontSize: '0.85rem', fontWeight: 600 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveColorMapping(item.id)}
+                        title="Remover este de-para"
+                        style={{ background: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '6px', padding: '0.4rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SEÇÃO 4: CREDENCIAIS E COOKIES UPSELLER */}
             <div style={{ marginBottom: '2rem' }}>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 🔑 Credenciais & Cookies de Acesso ao UpSeller (Robô RPA)

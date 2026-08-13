@@ -8,6 +8,10 @@ export interface ClientParameter {
   kit_keywords: string[]
   ignore_keywords: string[]
   auto_standardize_simples?: boolean
+  vision_instructions?: string
+  color_mappings?: Record<string, string>
+  ignored_props?: string[]
+  vision_sensitivity?: 'strict' | 'moderate'
 }
 
 export interface ClientCategoryRule {
@@ -167,6 +171,10 @@ export async function saveClientParameters(params: ClientParameter): Promise<{ s
         kit_keywords: params.kit_keywords,
         ignore_keywords: params.ignore_keywords,
         auto_standardize_simples: params.auto_standardize_simples ?? true,
+        vision_instructions: params.vision_instructions || '',
+        color_mappings: params.color_mappings || {},
+        ignored_props: params.ignored_props || [],
+        vision_sensitivity: params.vision_sensitivity || 'strict',
         updated_at: new Date().toISOString()
       }, { onConflict: 'client_id' })
 

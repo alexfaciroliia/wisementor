@@ -13,6 +13,9 @@ export interface VisionIdentifyRequest {
   imageUrl: string
   warehouseProducts: VisionKitProduct[]
   titleHint?: string
+  clientVisionInstructions?: string
+  ignoredProps?: string[]
+  visionSensitivity?: string
 }
 
 export interface VisionIdentifyResponse {
@@ -69,7 +72,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body: VisionIdentifyRequest = await req.json()
-    const { imageUrl, warehouseProducts, titleHint } = body
+    const { imageUrl, warehouseProducts, titleHint, clientVisionInstructions, ignoredProps, visionSensitivity } = body
 
     if (!imageUrl || warehouseProducts.length === 0) {
       return NextResponse.json({
@@ -169,20 +172,29 @@ export async function POST(req: NextRequest) {
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
 
+    const customRules = clientVisionInstructions && clientVisionInstructions.trim()
+      ? `\nDIRETRIZES VISUAIS ESPECÍFICAS DESTE CLIENTE:\n${clientVisionInstructions.trim()}\n`
+      : ''
+
+    const ignoredPropsList = Array.isArray(ignoredProps) && ignoredProps.length > 0
+      ? ignoredProps.join(', ')
+      : 'livros de apoio, caixas onde os produtos ficam apoiados, vasos de plantas, mesas, tapetes, fundos decorativos'
+
     parts.push({
-      text: `REGRAS ESTRITAS DE COMPARAÇÃO VISUAL (DESIGN E MODELO EXATOS):
+      text: `REGRAS ESTRITAS DE COMPARAÇÃO VISUAL (ANTI-ALUCINAÇÃO):
 1. COMPARAÇÃO RIGOROSA DE MODELO E DESIGN:
-   - Você DEVE examinar minuciosamente detalhes como: formato do bico, costuras, frisos, fivelas metálicas, fechos, cadarços, solado, botões e texturas.
-   - NÃO associe um SPU se o produto na foto do anúncio for de um modelo ou formato diferente da foto de referência do armazém.
-   - Exemplo de Sapato Social: A foto de referência do SPU "FN-6012" possui uma FIVELA METÁLICA RETANGULAR no peito do pé e FRISOS/COSTURAS HORIZONTAIS marcadas. Se o sapato do anúncio for liso, sem fivela ou com outro design de costura, ELE NÃO É O FN-6012! Você DEVE classificá-lo como "UNMAPPED_Sapato Social Liso" e NÃO associar o FN-6012.
-2. CORES E ILUMINAÇÃO DE FOTOGRAFIA: O produto pode estar em qualquer uma das cores de referência do mesmo SPU (ex: Tênis LC-400 nas cores Cinza, Azul Marinho, Branco, Preto). Variações de iluminação de estúdio (ex: tecido mesh do tênis cinza/chumbo parecendo acinzentado claro com reflexo frio/lilás/azulado) correspondem ao SPU "LC-400" (Cinza), DESDE QUE o formato da sola, as tiras/suportes laterais e a estrutura física sejam IDÊNTICOS ao modelo de referência.
-3. ELEMENTOS DE CENÁRIO/DECORAÇÃO (IGNORAR): Livros de apoio, caixas onde os sapatos ficam apoiados, vasos de plantas, mesas, tapetes e fundos são meramente decorativos e NÃO SÃO produtos de venda. NÃO os conte no total de itens e NÃO os adicione em unmapped_items.
-4. CONTAGEM TOTAL DE PRODUTOS DE VENDA: Conte quantos produtos físicos reais de venda estão expostos na foto (ex: 1 tênis + 1 relógio + 1 fone = 3 produtos; 1 tênis + 1 fone = 2 produtos).
-5. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Apenas produtos reais de venda (calçados, acessórios) com formato físico ou modelo completamente diferente dos produtos de referência devem ser listados em "unmapped_items".
+   - Compare cada item físico da foto do anúncio contra as fotos oficiais de referência do armazém.
+   - NÃO associe um código SPU se o item na foto do anúncio tiver formato, costura, fivelas, texturas ou estrutura física diferente da foto de referência.
+   - Qualquer produto na foto que não seja estruturalmente idêntico a um modelo de referência DEVE ser listado em "unmapped_items".
+${customRules}
+2. CORES E VARIAÇÕES: O produto pode estar em qualquer uma das cores oficiais de referência do mesmo SPU, desde que o modelo físico e design sejam idênticos.
+3. ELEMENTOS DE CENÁRIO/DECORAÇÃO (IGNORAR): ${ignoredPropsList}. Estes itens são meramente decorativos e NÃO SÃO produtos de venda. NÃO os conte no total de itens e NÃO os adicione em unmapped_items.
+4. CONTAGEM TOTAL DE PRODUTOS DE VENDA: Conte quantos produtos físicos reais de venda estão expostos na foto.
+5. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Apenas produtos reais de venda que não correspondam a nenhum modelo do armazém devem ser listados em "unmapped_items".
 6. FORMATO DA RESPOSTA (JSON):
 Responda EXCLUSIVAMENTE em formato JSON:
 {
-  "total_items_in_photo": <número total de itens físicos visíveis na foto>,
+  "total_items_in_photo": <número total de produtos de venda visíveis na foto>,
   "matched_spus": ["<SPU1>", "<SPU2>"],
   "unmapped_items": ["<Descrição dos produtos de venda não cadastrados>"],
   "reasoning": "<Explicação objetiva dos detalhes visuais comparados>"

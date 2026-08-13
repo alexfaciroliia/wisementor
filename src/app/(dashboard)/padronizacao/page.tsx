@@ -19,7 +19,7 @@ import {
 } from '@/lib/excel/planilha_marketplace_parser'
 import { removeAccentsAndCedilla } from '@/lib/excel/planilha1_parser'
 import { generateKitsExcel } from '@/lib/excel/excel_generator'
-import { fetchWarehouseProducts, getClientParameters, getClientCategoryRules, ClientCategoryRule } from '@/lib/services/product_service'
+import { fetchWarehouseProducts, getClientParameters, saveClientParameters, getClientCategoryRules, ClientCategoryRule } from '@/lib/services/product_service'
 import { useDashboard } from '@/app/(dashboard)/layout'
 
 export default function PadronizacaoPage() {
@@ -167,7 +167,14 @@ export default function PadronizacaoPage() {
           const res = await fetch('/api/vision/identify-kit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageUrl, warehouseProducts: products, titleHint })
+            body: JSON.stringify({
+              imageUrl,
+              warehouseProducts: products,
+              titleHint,
+              clientVisionInstructions: params.vision_instructions,
+              ignoredProps: params.ignored_props,
+              visionSensitivity: params.vision_sensitivity
+            })
           })
           if (!res.ok) return { identifiedSpus: [], totalItemsInPhoto: 0 }
           const data = await res.json()
@@ -191,7 +198,8 @@ export default function PadronizacaoPage() {
         params.ignore_keywords,
         visionFn,
         (current, total, listingId) => setVisionProgress({ current, total, listingId }),
-        categoryRules
+        categoryRules,
+        params.color_mappings
       )
 
       setVisionLogs(res.visionLogs || [])
@@ -345,6 +353,16 @@ export default function PadronizacaoPage() {
     }
 
     const chosenColor = selectedDePara[item.listingId] || item.availableColorsInWarehouse[0]
+
+    // Auto-aprendizado de De-Para de Cores: grava na parametrização do cliente para conciliar automaticamente nos próximos anúncios
+    if (selectedClientId && item.importedColors && item.importedColors.length > 0 && selectedDePara[item.listingId]) {
+      const impColor = item.importedColors[0].toLowerCase().trim()
+      const targetColor = selectedDePara[item.listingId]
+      getClientParameters(selectedClientId).then(params => {
+        const updated = { ...(params.color_mappings || {}), [impColor]: targetColor }
+        saveClientParameters({ ...params, client_id: selectedClientId, color_mappings: updated })
+      }).catch(() => {})
+    }
 
     // Gerar linhas do kit com as regras oficiais
     const { generatedRows, kitSku } = buildKitRowsForListing(
