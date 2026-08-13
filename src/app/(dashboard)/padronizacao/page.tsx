@@ -32,7 +32,7 @@ export default function PadronizacaoPage() {
   const [processing, setProcessing] = useState(false)
   const [resultData, setResultData] = useState<ParseMarketplaceResult | null>(null)
   
-  const [activeTab, setActiveTab] = useState<'kits' | 'conjuntos' | 'errors' | 'duplicates'>('kits')
+  const [activeTab, setActiveTab] = useState<'kits' | 'errors' | 'duplicates'>('kits')
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
   const [visionProgress, setVisionProgress] = useState<{ current: number; total: number; listingId: string } | null>(null)
   const [visionLogs, setVisionLogs] = useState<VisionProcessingLog[]>([])
@@ -302,77 +302,6 @@ export default function PadronizacaoPage() {
     })
   }
 
-  // Mover Anúncio Duplicado para a Central de Erros para permitir ajuste manual de componentes
-  function handleMoveDuplicateToErrorCenter(item: DuplicateKitListingItem) {
-    const usedSpus: string[] = []
-    if (item.generatedKitRows && item.generatedKitRows.length > 0) {
-      item.generatedKitRows.forEach(r => {
-        const p = currentWarehouseProducts.find(prod => prod.sku === r.sku)
-        if (p && !usedSpus.includes(p.spu)) {
-          usedSpus.push(p.spu)
-        }
-      })
-    }
-
-    const errorItem: ErrorCenterKitItem = {
-      listingId: item.listingId,
-      title: item.title,
-      cleanTitle: item.cleanTitle,
-      imageUrl: item.imageUrl,
-      statusMarketplace: item.statusMarketplace || 'ativo',
-      rows: item.rawRows || [
-        {
-          rowIdx: 1,
-          listingId: item.listingId,
-          title: item.title,
-          status: item.statusMarketplace || 'ativo',
-          imageUrl: item.imageUrl
-        }
-      ],
-      identifiedSpus: usedSpus,
-      errorReason: 'manual_review',
-      errorMessage: `Anúncio duplicado do anúncio "${item.duplicateOfListingId}". Enviado para a Central de Erros para selecionar componentes alternativos.`,
-      importedColors: [],
-      importedSizes: [],
-      availableColorsInWarehouse: Array.from(new Set(currentWarehouseProducts.map(p => p.color).filter(Boolean))),
-      availableSizesInWarehouse: Array.from(new Set(currentWarehouseProducts.map(p => p.size).filter(Boolean)))
-    }
-
-    setResultData(prev => {
-      if (!prev) return prev
-      const newDuplicates = (prev.duplicateListings || []).filter(d => d.listingId !== item.listingId)
-      const newAllListings = prev.allListings.map(l => {
-        if (l.listingId === item.listingId) {
-          return {
-            ...l,
-            listingStatus: 'blocked_error' as const,
-            generatedKitRows: []
-          }
-        }
-        return l
-      })
-      const newErrorCenterKits = [...(prev.errorCenterKits || []).filter(e => e.listingId !== item.listingId), errorItem]
-
-      return {
-        ...prev,
-        duplicateListings: newDuplicates,
-        allListings: newAllListings,
-        errorCenterKits: newErrorCenterKits
-      }
-    })
-
-    setCustomKitSpus(prev => ({
-      ...prev,
-      [item.listingId]: usedSpus
-    }))
-
-    setActiveTab('errors')
-    setMessage({
-      type: 'warning',
-      text: `O anúncio duplicado "${item.listingId}" foi movido para a Central de Erros. Você pode selecionar os produtos correspondentes para diferenciá-lo.`
-    })
-  }
-
   // 3. Adicionar SPU do Armazém ao Kit na Central de Erros
   function handleAddSpuToErrorKit(listingId: string, spu: string) {
     const cleanSpu = spu.trim().toUpperCase()
@@ -621,7 +550,7 @@ export default function PadronizacaoPage() {
       {resultData && (
         <>
           {/* Cards de Métricas */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
             <div
               onClick={() => setActiveTab('kits')}
               style={{
@@ -636,22 +565,6 @@ export default function PadronizacaoPage() {
               <span style={{ fontSize: '0.8rem', color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Formação dos Kits</span>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#34d399', marginTop: '0.25rem' }}>{kitsCount}</div>
               <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Linhas prontas para exportação</span>
-            </div>
-
-            <div
-              onClick={() => setActiveTab('conjuntos')}
-              style={{
-                background: activeTab === 'conjuntos' ? '#78350f' : '#1e293b',
-                padding: '1.25rem',
-                borderRadius: '10px',
-                border: '1px solid #d97706',
-                cursor: 'pointer',
-                transition: 'transform 0.2s'
-              }}
-            >
-              <span style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Pendentes (Conjuntos)</span>
-              <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#fbbf24', marginTop: '0.25rem' }}>{conjuntosList.length}</div>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Preservados sem alteração de SKU</span>
             </div>
 
             <div
@@ -711,7 +624,7 @@ export default function PadronizacaoPage() {
             </button>
           </div>
 
-          {/* Navegação de Abas Unificada */}
+          {/* Navegação de Abas Unificada (3 Abas) */}
           <div style={{ borderBottom: '1px solid #334155', marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
             <button
               onClick={() => setActiveTab('kits')}
@@ -727,22 +640,6 @@ export default function PadronizacaoPage() {
               }}
             >
               📦 Formação dos Kits ({kitsCount} linhas)
-            </button>
-
-            <button
-              onClick={() => setActiveTab('conjuntos')}
-              style={{
-                padding: '0.75rem 1.25rem',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === 'conjuntos' ? '3px solid #fbbf24' : 'none',
-                color: activeTab === 'conjuntos' ? '#fbbf24' : '#94a3b8',
-                fontWeight: 700,
-                fontSize: '0.95rem',
-                cursor: 'pointer'
-              }}
-            >
-              ⏳ Pendentes / Conjuntos ({conjuntosList.length})
             </button>
 
             <button
@@ -864,7 +761,7 @@ export default function PadronizacaoPage() {
                     </tr>
                   ) : (
                     resultData.allListings
-                      .filter(listing => listing.detectedType === 'kit' && listing.generatedKitRows.length > 0)
+                      .filter(listing => listing.detectedType === 'kit' && listing.listingStatus === 'standardized' && listing.generatedKitRows.length > 0)
                       .flatMap(listing =>
                         listing.generatedKitRows.map((r, idx) => ({ ...r, listingId: listing.listingId, isFirstOfListing: idx === 0, countOfListing: listing.generatedKitRows.length }))
                       )
@@ -933,52 +830,6 @@ export default function PadronizacaoPage() {
                             ⚠️ Enviar para Central de Erros
                           </button>
                         </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* ABA 2: PENDENTES / CONJUNTOS */}
-          {/* ========================================================================= */}
-          {activeTab === 'conjuntos' && (
-            <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', color: '#cbd5e1' }}>
-                <thead>
-                  <tr style={{ background: '#1e293b', borderBottom: '1px solid #334155', textAlign: 'left' }}>
-                    <th style={{ padding: '0.75rem 1rem' }}>ID Anúncio</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Título Original</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Status no Sistema</th>
-                    <th style={{ padding: '0.75rem 1rem' }}>Ação Recomendada</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {conjuntosList.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} style={{ padding: '2.5rem', textAlign: 'center', color: '#94a3b8' }}>
-                        Nenhum anúncio de conjunto identificado.
-                      </td>
-                    </tr>
-                  ) : (
-                    conjuntosList
-                      .filter(item => {
-                        if (!searchTerm.trim()) return true
-                        const norm = searchTerm.trim().toLowerCase()
-                        return [item.listingId, item.title].some(f => f !== undefined && String(f).toLowerCase().includes(norm))
-                      })
-                      .map((item, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #1e293b' }}>
-                        <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace' }}>{item.listingId}</td>
-                        <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{item.title}</td>
-                        <td style={{ padding: '0.65rem 1rem' }}>
-                          <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', background: '#78350f', color: '#fde68a', fontWeight: 600, fontSize: '0.75rem' }}>
-                            Pendente (Conjunto)
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.65rem 1rem', color: '#94a3b8' }}>Preservado sem alteração de SKU. Não forma kit automático.</td>
                       </tr>
                     ))
                   )}
@@ -1441,7 +1292,7 @@ export default function PadronizacaoPage() {
                           borderRadius: '10px',
                           padding: '1.25rem',
                           display: 'grid',
-                          gridTemplateColumns: 'auto 1fr auto',
+                          gridTemplateColumns: 'auto 1fr',
                           gap: '1.25rem',
                           alignItems: 'center'
                         }}
@@ -1465,7 +1316,7 @@ export default function PadronizacaoPage() {
                           )}
                         </div>
 
-                        {/* Detalhes do Anúncio Duplicado */}
+                        {/* Detalhes do Anúncio Duplicado (Somente Informativo) */}
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                             <span style={{
@@ -1481,7 +1332,7 @@ export default function PadronizacaoPage() {
                             </span>
                             <span style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.95rem' }}>{item.listingId}</span>
                             <span style={{ fontSize: '0.8rem', color: '#f59e0b', background: '#451a03', padding: '0.15rem 0.5rem', borderRadius: '4px', border: '1px solid #78350f' }}>
-                              ⚠️ Duplicado do anúncio: <strong style={{ color: '#fbbf24' }}>{item.duplicateOfListingId}</strong>
+                              ⚠️ Duplicado do anúncio original: <strong style={{ color: '#fbbf24' }}>{item.duplicateOfListingId}</strong>
                             </span>
                           </div>
 
@@ -1496,32 +1347,8 @@ export default function PadronizacaoPage() {
                             {item.generatedKitRows && item.generatedKitRows.length > 0 && (
                               <span>• Total de Variações: <strong style={{ color: '#e2e8f0' }}>{item.generatedKitRows.length} linhas</strong></span>
                             )}
+                            <span style={{ color: '#a78bfa' }}>• Mantido apenas o anúncio original ({item.duplicateOfListingId}) na Formação dos Kits</span>
                           </div>
-                        </div>
-
-                        {/* Ação para enviar para Central de Erros caso queira alterar produtos */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '180px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveDuplicateToErrorCenter(item)}
-                            style={{
-                              padding: '0.65rem 1rem',
-                              borderRadius: '6px',
-                              background: '#7c3aed',
-                              color: '#fff',
-                              fontWeight: 600,
-                              fontSize: '0.825rem',
-                              border: 'none',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '0.4rem',
-                              boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.3)'
-                            }}
-                          >
-                            ✏️ Mudar Componentes
-                          </button>
                         </div>
                       </div>
                     ))}
