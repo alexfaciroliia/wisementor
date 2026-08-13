@@ -864,12 +864,13 @@ export default function PadronizacaoPage() {
                     const activeSpus = customKitSpus[item.listingId] || item.identifiedSpus || []
                     const searchForThis = (warehouseSearchPerListing[item.listingId] || '').trim().toLowerCase()
 
-                    const matchingWarehouseProds = uniqueWarehouseProducts.filter(p => {
-                      if (!searchForThis) return true
-                      return p.spu.toLowerCase().includes(searchForThis) ||
-                             (p.product_name || '').toLowerCase().includes(searchForThis) ||
-                             p.sku.toLowerCase().includes(searchForThis)
-                    }).slice(0, 8)
+                    const matchingWarehouseProds = !searchForThis
+                      ? []
+                      : uniqueWarehouseProducts.filter(p => {
+                          return p.spu.toLowerCase().includes(searchForThis) ||
+                                 (p.product_name || '').toLowerCase().includes(searchForThis) ||
+                                 p.sku.toLowerCase().includes(searchForThis)
+                        })
 
                     return (
                       <div
@@ -1050,72 +1051,82 @@ export default function PadronizacaoPage() {
 
                               {/* Lista de Produtos Encontrados no Armazém */}
                               <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.5rem' }}>
-                                {matchingWarehouseProds.map((prod, pIdx) => {
-                                  const isAlreadyAdded = activeSpus.includes(prod.spu.toUpperCase())
-                                  return (
-                                    <div
-                                      key={pIdx}
-                                      style={{
-                                        padding: '0.5rem 0.75rem',
-                                        borderRadius: '6px',
-                                        background: isAlreadyAdded ? '#1e293b' : '#0f172a',
-                                        border: isAlreadyAdded ? '1px solid #059669' : '1px solid #1e293b',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        gap: '0.5rem'
-                                      }}
-                                    >
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
-                                        {prod.image_url ? (
-                                          <img
-                                            src={prod.image_url}
-                                            alt={prod.product_name || prod.spu}
-                                            onClick={() => setModalImg(prod.image_url!)}
-                                            onMouseEnter={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
-                                            onMouseMove={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
-                                            onMouseLeave={() => setHoveredImg(null)}
-                                            style={{ width: '36px', height: '36px', objectFit: 'contain', background: '#fff', borderRadius: '4px', cursor: 'pointer', border: '1px solid #334155', flexShrink: 0 }}
-                                          />
-                                        ) : (
-                                          <div style={{ width: '36px', height: '36px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', flexShrink: 0 }}>📦</div>
-                                        )}
-                                        <div style={{ overflow: 'hidden' }}>
-                                          <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {prod.spu}
-                                          </div>
-                                          <div style={{ color: '#94a3b8', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {prod.product_name || prod.sku}
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (isAlreadyAdded) {
-                                            handleRemoveSpuFromErrorKit(item.listingId, prod.spu)
-                                          } else {
-                                            handleAddSpuToErrorKit(item.listingId, prod.spu)
-                                          }
-                                        }}
+                                {!searchForThis ? (
+                                  <div style={{ padding: '1.25rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic', gridColumn: '1 / -1', background: '#0f172a', borderRadius: '6px', border: '1px dashed #334155' }}>
+                                    💡 Digite o <strong>SPU, Nome ou SKU</strong> no campo acima para localizar e adicionar produtos do armazém.
+                                  </div>
+                                ) : matchingWarehouseProds.length === 0 ? (
+                                  <div style={{ padding: '1.25rem', textAlign: 'center', color: '#f87171', fontSize: '0.85rem', gridColumn: '1 / -1', background: '#0f172a', borderRadius: '6px', border: '1px solid #7f1d1d' }}>
+                                    Nenhum produto encontrado no armazém para "{warehouseSearchPerListing[item.listingId]}".
+                                  </div>
+                                ) : (
+                                  matchingWarehouseProds.map((prod, pIdx) => {
+                                    const isAlreadyAdded = activeSpus.includes(prod.spu.toUpperCase())
+                                    return (
+                                      <div
+                                        key={pIdx}
                                         style={{
-                                          padding: '0.35rem 0.65rem',
-                                          borderRadius: '4px',
-                                          background: isAlreadyAdded ? '#7f1d1d' : '#16a34a',
-                                          color: '#fff',
-                                          border: 'none',
-                                          fontSize: '0.75rem',
-                                          fontWeight: 700,
-                                          cursor: 'pointer',
-                                          whiteSpace: 'nowrap'
+                                          padding: '0.5rem 0.75rem',
+                                          borderRadius: '6px',
+                                          background: isAlreadyAdded ? '#1e293b' : '#0f172a',
+                                          border: isAlreadyAdded ? '1px solid #059669' : '1px solid #1e293b',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          gap: '0.5rem'
                                         }}
                                       >
-                                        {isAlreadyAdded ? '✓ Adicionado' : '+ Adicionar'}
-                                      </button>
-                                    </div>
-                                  )
-                                })}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                                          {prod.image_url ? (
+                                            <img
+                                              src={prod.image_url}
+                                              alt={prod.product_name || prod.spu}
+                                              onClick={() => setModalImg(prod.image_url!)}
+                                              onMouseEnter={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
+                                              onMouseMove={(e) => setHoveredImg({ url: prod.image_url!, x: e.clientX, y: e.clientY })}
+                                              onMouseLeave={() => setHoveredImg(null)}
+                                              style={{ width: '36px', height: '36px', objectFit: 'contain', background: '#fff', borderRadius: '4px', cursor: 'pointer', border: '1px solid #334155', flexShrink: 0 }}
+                                            />
+                                          ) : (
+                                            <div style={{ width: '36px', height: '36px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', flexShrink: 0 }}>📦</div>
+                                          )}
+                                          <div style={{ overflow: 'hidden' }}>
+                                            <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {prod.spu}
+                                            </div>
+                                            <div style={{ color: '#94a3b8', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {prod.product_name || prod.sku}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (isAlreadyAdded) {
+                                              handleRemoveSpuFromErrorKit(item.listingId, prod.spu)
+                                            } else {
+                                              handleAddSpuToErrorKit(item.listingId, prod.spu)
+                                            }
+                                          }}
+                                          style={{
+                                            padding: '0.35rem 0.65rem',
+                                            borderRadius: '4px',
+                                            background: isAlreadyAdded ? '#7f1d1d' : '#16a34a',
+                                            color: '#fff',
+                                            border: 'none',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap'
+                                          }}
+                                        >
+                                          {isAlreadyAdded ? '✓ Adicionado' : '+ Adicionar'}
+                                        </button>
+                                      </div>
+                                    )
+                                  })
+                                )}
                               </div>
                             </div>
 
