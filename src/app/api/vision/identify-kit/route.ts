@@ -177,37 +177,41 @@ export async function POST(req: NextRequest) {
    - Exemplo de Sapato Social: A foto de referência do SPU "FN-6012" possui uma FIVELA METÁLICA RETANGULAR no peito do pé e FRISOS/COSTURAS HORIZONTAIS marcadas. Se o sapato do anúncio for liso, sem fivela ou com outro design de costura, ELE NÃO É O FN-6012! Você DEVE classificá-lo como "UNMAPPED_Sapato Social Liso" e NÃO associar o FN-6012.
    - Exemplo de Relógio: Se a foto mostra um relógio com display quadrado, ele corresponde ao "V20" (Quadrado); se tem display fino/alongado, corresponde ao "V5" (Slim); se for analógico com ponteiros, corresponde ao "V30" (Analógico). Não troque modelos.
 2. CORES: O produto pode estar em qualquer uma das cores de referência do mesmo SPU (ex: Tênis LC-400 cinza ou azul marinho), DESDE QUE o design, formato e costura sejam IDÊNTICOS ao modelo de referência.
-3. CONTAGEM TOTAL DE ITENS: Conte quantos produtos físicos distintos estão expostos na foto do anúncio.
-4. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Qualquer produto na foto que não seja IDÊNTICO em modelo/design a um dos produtos de referência do armazém DEVE ser retornado em "unmapped_items".
-5. FORMATO DA RESPOSTA (JSON):
+3. ELEMENTOS DE CENÁRIO/DECORAÇÃO (IGNORAR): Livros de apoio, caixas onde os sapatos ficam apoiados, vasos de plantas, mesas, tapetes e fundos são meramente decorativos e NÃO SÃO produtos de venda. NÃO os conte no total de itens e NÃO os adicione em unmapped_items.
+4. CONTAGEM TOTAL DE PRODUTOS DE VENDA: Conte quantos produtos físicos reais de venda estão expostos na foto (ex: 1 sapato + 1 relógio + 1 cinto = 3 produtos).
+5. PRODUTOS NÃO CADASTRADOS (UNMAPPED): Apenas produtos reais de venda (calçados, acessórios) que não correspondam a nenhum modelo de referência devem ser listados em "unmapped_items".
+6. FORMATO DA RESPOSTA (JSON):
 Responda EXCLUSIVAMENTE em formato JSON:
 {
   "total_items_in_photo": <número total de itens físicos visíveis na foto>,
   "matched_spus": ["<SPU1>", "<SPU2>"],
-  "unmapped_items": ["<Descrição dos itens na foto que não correspondem a nenhum modelo do armazém>"],
+  "unmapped_items": ["<Descrição dos produtos de venda não cadastrados>"],
   "reasoning": "<Explicação objetiva dos detalhes visuais comparados>"
 }`
     })
 
-    // 5. Chamar Gemini Flash Latest (com retry para resiliência)
+    // 5. Chamar Gemini 3.5 Flash Lite (alta capacidade de requisições e ultra-rápido)
     const ai = new GoogleGenAI({ apiKey })
     let response: any = null
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
+        model: 'gemini-3.5-flash-lite',
         contents: [{ parts }]
       })
     } catch (modelErr: any) {
-      console.warn('[vision/identify-kit] Retry com gemini-3.5-flash devido a:', modelErr.message)
+      console.warn('[vision/identify-kit] Fallback para gemini-3.1-flash-lite devido a:', modelErr.message)
       try {
-        await new Promise(resolve => setTimeout(resolve, 800))
+        await new Promise(resolve => setTimeout(resolve, 500))
+        response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: [{ parts }]
+        })
+      } catch (retryErr: any) {
+        console.warn('[vision/identify-kit] Fallback para gemini-3.5-flash devido a:', retryErr.message)
         response = await ai.models.generateContent({
           model: 'gemini-3.5-flash',
           contents: [{ parts }]
         })
-      } catch (retryErr: any) {
-        console.error('[vision/identify-kit] Erro após retry:', retryErr.message)
-        throw retryErr
       }
     }
 
