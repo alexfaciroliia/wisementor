@@ -404,9 +404,22 @@ export default function PadronizacaoPage() {
   const errorLogsList = resultData?.errorLogs || []
   const duplicateListingsList = resultData?.duplicateListings || []
 
-  // Lista única de produtos do armazém para pesquisa rápida no seletor
+  // Lista única de produtos do armazém agrupada por SPU + Cor (excluindo duplicações de numerações)
   const uniqueWarehouseProducts = Array.from(
-    new Map(currentWarehouseProducts.map(p => [p.spu.toUpperCase(), p])).values()
+    currentWarehouseProducts.reduce((acc, prod) => {
+      const spuKey = (prod.spu || '').trim().toUpperCase()
+      const colorKey = (prod.color || '').trim().toUpperCase()
+      const uniqueKey = `${spuKey}_${colorKey}`
+      if (!acc.has(uniqueKey)) {
+        acc.set(uniqueKey, prod)
+      } else {
+        const existing = acc.get(uniqueKey)!
+        if (!existing.image_url && prod.image_url) {
+          acc.set(uniqueKey, prod)
+        }
+      }
+      return acc
+    }, new Map<string, WarehouseProductItem>()).values()
   )
 
   return (
@@ -867,9 +880,10 @@ export default function PadronizacaoPage() {
                     const matchingWarehouseProds = !searchForThis
                       ? []
                       : uniqueWarehouseProducts.filter(p => {
-                          return p.spu.toLowerCase().includes(searchForThis) ||
+                          return (p.spu || '').toLowerCase().includes(searchForThis) ||
                                  (p.product_name || '').toLowerCase().includes(searchForThis) ||
-                                 p.sku.toLowerCase().includes(searchForThis)
+                                 (p.color || '').toLowerCase().includes(searchForThis) ||
+                                 (p.sku || '').toLowerCase().includes(searchForThis)
                         })
 
                     return (
@@ -1091,8 +1105,15 @@ export default function PadronizacaoPage() {
                                             <div style={{ width: '36px', height: '36px', background: '#334155', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', flexShrink: 0 }}>📦</div>
                                           )}
                                           <div style={{ overflow: 'hidden' }}>
-                                            <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                              {prod.spu}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '2px' }}>
+                                              <span style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.825rem', whiteSpace: 'nowrap' }}>
+                                                {prod.spu}
+                                              </span>
+                                              {prod.color && (
+                                                <span style={{ fontSize: '0.7rem', background: '#334155', color: '#f1f5f9', padding: '0.1rem 0.4rem', borderRadius: '4px', fontWeight: 600 }}>
+                                                  {prod.color}
+                                                </span>
+                                              )}
                                             </div>
                                             <div style={{ color: '#94a3b8', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                               {prod.product_name || prod.sku}

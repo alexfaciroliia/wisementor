@@ -5,6 +5,7 @@ export interface VisionKitProduct {
   spu: string
   sku: string
   product_name: string
+  color?: string
   image_url?: string
 }
 
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body: VisionIdentifyRequest = await req.json()
-    const { imageUrl, warehouseProducts } = body
+    const { imageUrl, warehouseProducts, titleHint } = body
 
     if (!imageUrl || warehouseProducts.length === 0) {
       return NextResponse.json({
@@ -81,27 +82,34 @@ export async function POST(req: NextRequest) {
       } as VisionIdentifyResponse, { status: 200 })
     }
 
-    // 2. Deduplicar SPUs e coletar a primeira image_url de cada SPU
-    const spuRefMap = new Map<string, { spu: string; name: string; imageUrl: string | null }>()
+    // 2. Coletar todas as imagens de referência distintas de cada SPU / Cor
+    const refItemsMap = new Map<string, { spu: string; name: string; color?: string; imageUrl: string }>()
+    const allSpusInWarehouse = new Set<string>()
+
     for (const p of warehouseProducts) {
       if (!p.spu) continue
-      const key = p.spu.toUpperCase()
-      if (!spuRefMap.has(key)) {
-        spuRefMap.set(key, {
-          spu: p.spu,
-          name: p.product_name || p.spu,
-          imageUrl: p.image_url && p.image_url.trim() ? p.image_url.trim() : null
-        })
-      } else if (!spuRefMap.get(key)!.imageUrl && p.image_url && p.image_url.trim()) {
-        spuRefMap.get(key)!.imageUrl = p.image_url.trim()
+      const spuKey = p.spu.toUpperCase()
+      allSpusInWarehouse.add(spuKey)
+      const imgUrl = (p.image_url || '').trim()
+      const color = (p.color || '').trim()
+
+      if (imgUrl) {
+        const key = `${spuKey}_${imgUrl}`
+        if (!refItemsMap.has(key)) {
+          refItemsMap.set(key, {
+            spu: p.spu,
+            name: p.product_name || p.spu,
+            color: color || undefined,
+            imageUrl: imgUrl
+          })
+        }
       }
     }
 
-    // 3. Baixar imagens de referência de cada SPU em paralelo
-    const spuEntries = Array.from(spuRefMap.values())
+    // 3. Baixar imagens de referência de cada variação em paralelo
+    const refEntries = Array.from(refItemsMap.values())
     const refImageResults = await Promise.all(
-      spuEntries.map(async (entry) => {
-        if (!entry.imageUrl) return { ...entry, imageData: null }
+      refEntries.map(async (entry) => {
         const imageData = await fetchImageBase64(entry.imageUrl, 12000)
         return { ...entry, imageData }
       })
@@ -109,20 +117,21 @@ export async function POST(req: NextRequest) {
 
     // Separar SPUs com e sem imagem de referência
     const spusWithImage = refImageResults.filter(r => r.imageData !== null)
-    const spusWithoutImage = refImageResults.filter(r => r.imageData === null)
+    const spusCovered = new Set(spusWithImage.map(r => r.spu.toUpperCase()))
+    const spusWithoutImage = Array.from(allSpusInWarehouse).filter(spuKey => !spusCovered.has(spuKey))
 
     // 4. Montar as parts do prompt multi-imagem
     const parts: any[] = []
 
-    // 4a. Imagens de referência dos produtos do armazém (com labels)
+    // 4a. Imagens de referência dos produtos do armazém (com labels por SPU e Cor)
     if (spusWithImage.length > 0) {
       parts.push({
-        text: `IMAGENS DE REFERÊNCIA DOS PRODUTOS CADASTRADOS NO ARMAZÉM DO SUPABASE:\nAbaixo estão ${spusWithImage.length} imagens de referência oficiais do armazém. Cada imagem possui seu código SPU e Nome correspondente.\nUse estas imagens para fazer COMPARAÇÃO VISUAL DIRETA E ESTRITA com a foto do anúncio.\n`
+        text: `IMAGENS DE REFERÊNCIA DOS PRODUTOS CADASTRADOS NO ARMAZÉM DO SUPABASE:\nAbaixo estão ${spusWithImage.length} imagens de referência oficiais do armazém. Cada imagem possui seu código SPU, Nome e Cor correspondente.\nUse estas imagens para identificar visualmente quais produtos do armazém estão presentes na foto do anúncio.\nIMPORTANTE: Diferentes cores do mesmo modelo compartilham o mesmo código SPU (ex: Tênis SPU "LC-400" nas cores Cinza, Azul Marinho, Branco, Preto pertence ao SPU "LC-400").\n`
       })
 
       for (const ref of spusWithImage) {
         parts.push({
-          text: `--- PRODUTO DO ARMAZÉM: SPU="${ref.spu}" | Nome="${ref.name}" ---`
+          text: `--- PRODUTO DO ARMAZÉM: SPU="${ref.spu}" | Nome="${ref.name}"${ref.color ? ` | Cor="${ref.color}"` : ''} ---`
         })
         parts.push({
           inlineData: { mimeType: ref.imageData!.mimeType, data: ref.imageData!.base64 }
@@ -133,7 +142,10 @@ export async function POST(req: NextRequest) {
     // 4b. SPUs sem imagem (apenas texto de apoio)
     if (spusWithoutImage.length > 0) {
       const textOnlyList = spusWithoutImage
-        .map((r, i) => `${i + 1}. SPU: "${r.spu}" | Nome: "${r.name}" (sem imagem cadastrada)`)
+        .map((spuKey, i) => {
+          const sampleProd = warehouseProducts.find(p => p.spu?.toUpperCase() === spuKey)
+          return `${i + 1}. SPU: "${sampleProd?.spu || spuKey}" | Nome: "${sampleProd?.product_name || spuKey}" (sem imagem cadastrada)`
+        })
         .join('\n')
       parts.push({
         text: `\nPRODUTOS SEM IMAGEM DE REFERÊNCIA NO ARMAZÉM:\n${textOnlyList}\n`
@@ -147,18 +159,26 @@ export async function POST(req: NextRequest) {
     parts.push({
       inlineData: { mimeType: listingImage.mimeType, data: listingImage.base64 }
     })
+
+    if (titleHint && titleHint.trim()) {
+      parts.push({
+        text: `\nTÍTULO DO ANÚNCIO (DICA DE CONTEXTO): "${titleHint.trim()}"\n`
+      })
+    }
+
     parts.push({
-      text: `REGRAS ESTRITAS DE COMPARAÇÃO VISUAL:
-1. REGRA MANDATÓRIA: O sistema NÃO pode identificar produtos por mera semelhança ou categoria genérica. Você DEVE IDENTIFICAR APENAS produtos que sejam ESTRITAMENTE IDÊNTICOS (mesmo modelo, mesmo formato, mesmo design visual) entre a foto do anúncio e as fotos de referência do armazém.
-2. CONTAGEM DE ITENS: Conte quantos produtos físicos distintos estão expostos na foto do anúncio (ex: se a foto mostra 1 sapato + 1 relógio + 1 cinto + 1 carteira, são 4 itens).
-3. ITENS NÃO IDÊNTICOS OU AUSENTES: Se um item na foto do anúncio for de um modelo diferente, não possuir referência idêntica no armazém ou for desconhecido, retorne como "UNMAPPED_[DESCRIÇÃO]".
-4. FORMATO DA RESPOSTA (JSON):
+      text: `REGRAS DE COMPARAÇÃO VISUAL:
+1. IDENTIFICAÇÃO DE PRODUTOS: Compare os itens da foto do anúncio com as imagens de referência do armazém. Identifique o código SPU de cada produto presente na foto (ex: se a foto mostra um Tênis modelo LC-400 e um Fone I12, identifique ["LC-400", "I12"]).
+2. CORES E VARIAÇÕES: O mesmo produto SPU pode aparecer na foto em qualquer uma de suas cores de referência (ex: Tênis LC-400 cinza, azul ou preto é o SPU "LC-400").
+3. CONTAGEM TOTAL DE ITENS: Conte quantos produtos físicos distintos aparecem na foto do anúncio.
+4. PRODUTOS NÃO CADASTRADOS: Se a foto contiver algum produto que NÃO corresponda a nenhum produto do armazém, liste em "unmapped_items".
+5. FORMATO DA RESPOSTA (JSON):
 Responda EXCLUSIVAMENTE em formato JSON com a seguinte estrutura:
 {
   "total_items_in_photo": <número total de itens físicos visíveis na foto>,
   "matched_spus": ["<SPU1>", "<SPU2>"],
-  "unmapped_items": ["<Descrição de item que não é idêntico a nenhum produto do armazém>"],
-  "reasoning": "<Breve explicação da correspondência visual idêntica>"
+  "unmapped_items": ["<Descrição de item que não é de nenhum produto do armazém>"],
+  "reasoning": "<Breve explicação da identificação visual>"
 }`
     })
 
