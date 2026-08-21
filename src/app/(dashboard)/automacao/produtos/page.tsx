@@ -121,7 +121,7 @@ export default function AutomationProducts() {
             📦 Fonte da Verdade (Produtos WiseMentor)
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Inventário oficial de produtos salvos no armazém do Supabase para o cliente ativo.
+            Inventário oficial de produtos salvos no armazém do sistema para o cliente ativo.
           </p>
         </div>
 
@@ -164,10 +164,10 @@ export default function AutomationProducts() {
           <div style={{ background: '#131924', border: '1px solid #0284c7', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#38bdf8', fontWeight: 600 }}>
-                💡 Ingestão & Processamento da Planilha 1
+                💡 Importação da Planilha do Cliente
               </h3>
               <p style={{ margin: '0.35rem 0 0', fontSize: '0.875rem', color: '#cbd5e1' }}>
-                O envio e higienização da **Planilha 1 do Cliente** (com masculinização de cores, expansão de tamanhos e modelos UpSeller) é feito na tela oficial <strong>📦 Produtos (Armazém)</strong>.
+                O envio e higienização da **Planilha do Cliente** (com masculinização de cores, expansão de tamanhos e modelos UpSeller) é feito na tela oficial <strong>📦 Importação da Planilha do Cliente</strong>.
               </p>
             </div>
 
@@ -207,7 +207,7 @@ export default function AutomationProducts() {
               </div>
             ) : filteredProducts.length === 0 ? (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                Nenhum produto cadastrado para este cliente. Faça o upload da Planilha 1 na tela <strong>Produtos (Armazém)</strong>.
+                Nenhum produto cadastrado para este cliente. Faça o upload da Planilha do Cliente na tela <strong>Importação da Planilha do Cliente</strong>.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>

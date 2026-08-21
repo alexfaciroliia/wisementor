@@ -79,7 +79,7 @@ export default function PadronizacaoPage() {
       if (warehouseProducts.length === 0) {
         setMessage({
           type: 'warning',
-          text: `Atenção: Nenhum produto cadastrado no armazém do Supabase${targetSpu ? ` para o SPU '${targetSpu}'` : ''}. Cadastre primeiro via Ingestão (Planilha 1).`
+          text: `Atenção: Nenhum produto cadastrado no armazém do sistema${targetSpu ? ` para o SPU '${targetSpu}'` : ''}. Cadastre primeiro via Importação da Planilha do Cliente.`
         })
       }
 
@@ -448,7 +448,7 @@ export default function PadronizacaoPage() {
           🎯 Padronização & Formação de Kits (UpSeller)
         </h1>
         <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem', lineHeight: '1.5' }}>
-          Importe a planilha de anúncios dos marketplaces exportada do UpSeller. O sistema compara as fotos dos anúncios estritamente com as fotos dos produtos cadastrados no armazém do Supabase. Kits com identificação completa têm seus SKUs montados e vão para <strong>Formação dos Kits</strong>; kits com produtos faltantes ou divergentes vão para a <strong>Central de Erros</strong> para resolução interativa.
+          Importe a planilha de anúncios dos marketplaces exportada do UpSeller. O sistema compara as fotos dos anúncios estritamente com as fotos dos produtos cadastrados no armazém do sistema. Kits com identificação completa têm seus SKUs montados e vão para <strong>Formação dos Kits</strong>; kits com produtos faltantes ou divergentes vão para a <strong>Central de Erros</strong> para resolução interativa.
         </p>
       </div>
 
@@ -513,12 +513,30 @@ export default function PadronizacaoPage() {
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
               Planilha de Anúncios do UpSeller:
             </label>
-            <input
-              type="file"
-              accept=".xlsx, .xls"
-              onChange={e => setFile(e.target.files?.[0] || null)}
-              style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', background: '#1a1e2e', border: '1px solid #334155', color: '#fff', fontSize: '0.85rem' }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#1a1e2e', border: '1px solid #334155', borderRadius: '8px', padding: '0.45rem 0.75rem' }}>
+              <label style={{
+                background: '#e2e8f0',
+                color: '#0f172a',
+                padding: '0.45rem 0.9rem',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                userSelect: 'none',
+                display: 'inline-block'
+              }}>
+                Escolher arquivo
+                <input
+                  type="file"
+                  accept=".xlsx, .xls"
+                  onChange={e => setFile(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              <span style={{ fontSize: '0.875rem', color: file ? '#f1f5f9' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {file ? file.name : 'Nenhum arquivo selecionado'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -875,7 +893,7 @@ export default function PadronizacaoPage() {
           {activeTab === 'errors' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div style={{ background: '#1e293b', border: '1px solid #dc2626', borderRadius: '10px', padding: '1rem 1.25rem', color: '#fca5a5', fontSize: '0.9rem' }}>
-                🚨 <strong>Central de Erros & Identificação Manual</strong>: Esta aba lista todos os kits onde o sistema não encontrou correspondência 100% idêntica para todos os produtos da foto, itens que possuem variações pendentes de de-para ou que foram enviados manualmente para correção. Selecione os produtos faltantes diretamente do armazém Supabase para formar o kit.
+                🚨 <strong>Central de Erros & Identificação Manual</strong>: Esta aba lista todos os kits onde o sistema não encontrou correspondência 100% idêntica para todos os produtos da foto, itens que possuem variações pendentes de de-para ou que foram enviados manualmente para correção. Selecione os produtos faltantes diretamente do armazém do sistema para formar o kit.
               </div>
 
               {errorCenterKitsList.length === 0 ? (

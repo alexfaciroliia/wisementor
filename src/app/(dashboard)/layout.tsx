@@ -615,14 +615,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/produtos"
               className={`menu-item ${pathname === '/produtos' ? 'active' : ''}`}
             >
-              📦 Ingestão (Planilha 1)
+              📦 Importação da Planilha do Cliente
             </Link>
 
             <Link
               href="/armazem"
               className={`menu-item ${pathname === '/armazem' ? 'active' : ''}`}
             >
-              🗄️ Armazém do Supabase
+              🗄️ Armazém do Sistema
             </Link>
 
             <Link

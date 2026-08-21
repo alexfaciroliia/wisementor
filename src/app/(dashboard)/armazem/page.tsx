@@ -209,10 +209,10 @@ export default function ArmazemanPage() {
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>
-          🗄️ Armazém do Supabase ({selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'})
+          🗄️ Armazém do Sistema ({selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'})
         </h1>
         <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
-          Consulte, adicione, edite ou remova produtos salvos no armazém do Supabase para o cliente ativo selecionado.
+          Consulte, adicione, edite ou remova produtos salvos no armazém do sistema para o cliente ativo selecionado.
         </p>
       </div>
 
@@ -295,11 +295,11 @@ export default function ArmazemanPage() {
       {/* Lista de Produtos do Banco de Dados */}
       {loadingDb ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#38bdf8' }}>
-          Carregando produtos do banco Supabase...
+          Carregando produtos do armazém do sistema...
         </div>
       ) : filteredDbProducts.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', background: '#131722', borderRadius: '12px', border: '1px solid #2a2e3d', color: '#94a3b8' }}>
-          {searchTerm ? 'Nenhum produto encontrado para a busca.' : 'Nenhum produto cadastrado no armazém do Supabase para este cliente.'}
+          {searchTerm ? 'Nenhum produto encontrado para a busca.' : 'Nenhum produto cadastrado no armazém do sistema para este cliente.'}
         </div>
       ) : (
         <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
@@ -541,7 +541,7 @@ export default function ArmazemanPage() {
                   disabled={actionLoading}
                   style={{ padding: '0.65rem 1.25rem', borderRadius: '6px', background: '#16a34a', color: '#fff', border: 'none', cursor: actionLoading ? 'wait' : 'pointer', fontWeight: 600 }}
                 >
-                  {actionLoading ? 'Salvando...' : 'Salvar no Supabase'}
+                  {actionLoading ? 'Salvando...' : 'Salvar no Armazém'}
                 </button>
               </div>
             </form>

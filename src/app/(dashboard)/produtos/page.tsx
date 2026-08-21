@@ -194,10 +194,10 @@ export default function ProdutosPage() {
       await saveErrorLogs(selectedClientId, batchId, 'planilha_1_produtos', parsedData.errorLogs)
       setSaveMessage({
         type: 'success',
-        text: `Sucesso! ${res.savedCount} produtos foram salvos/atualizados no armazém do Supabase para o cliente ${selectedClient?.name}.`
+        text: `Sucesso! ${res.savedCount} produtos foram salvos/atualizados no armazém do sistema para o cliente ${selectedClient?.name}.`
       })
     } else {
-      setSaveMessage({ type: 'error', text: `Erro ao salvar no Supabase: ${res.error}` })
+      setSaveMessage({ type: 'error', text: `Erro ao salvar no armazém: ${res.error}` })
     }
 
     setSaving(false)
@@ -355,17 +355,17 @@ export default function ProdutosPage() {
       <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>
-            📦 Gestão & Armazém de Produtos
+            {mainTab === 'ingestao' ? '📦 Importação da Planilha do Cliente' : '📦 Produtos do Armazém do Sistema'}
           </h1>
           <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
             {mainTab === 'ingestao'
               ? 'Carregue a planilha bruta do cliente para processar as regras do **Prompt 1**, classificar Produtos Únicos vs Variantes e salvar no banco de dados.'
-              : 'Consulte, adicione, edite ou remova produtos salvos no armazém do Supabase para o cliente ativo.'}
+              : 'Consulte, adicione, edite ou remova produtos salvos no armazém do sistema para o cliente ativo.'}
           </p>
         </div>
       </div>
 
-      {/* Navegação por Abas Principais (Ingestão vs Banco Supabase) */}
+      {/* Navegação por Abas Principais (Ingestão vs Banco do Sistema) */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '2px solid #2a2e3d', paddingBottom: '0.5rem' }}>
         <button
           onClick={() => setMainTab('ingestao')}
@@ -383,7 +383,7 @@ export default function ProdutosPage() {
             boxShadow: mainTab === 'ingestao' ? '0 4px 12px rgba(2, 132, 199, 0.3)' : 'none'
           }}
         >
-          📤 Upload & Ingestão da Planilha 1
+          📤 Planilha do Cliente
         </button>
 
         <button
@@ -402,7 +402,7 @@ export default function ProdutosPage() {
             boxShadow: mainTab === 'database' ? '0 4px 12px rgba(22, 163, 74, 0.3)' : 'none'
           }}
         >
-          🗃️ Produtos Armazenados no Supabase ({selectedClient ? selectedClient.name : 'Selecione um Cliente'})
+          📦 Produtos do Armazém do Sistema ({selectedClient ? selectedClient.name : 'Selecione um Cliente'})
         </button>
       </div>
 
@@ -439,22 +439,32 @@ export default function ProdutosPage() {
               {/* Input do Arquivo */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-                  Upload da Planilha 1 (.xlsx do Cliente):
+                  Upload da Planilha do Cliente (.xlsx do Cliente):
                 </label>
-                <input
-                  type="file"
-                  accept=".xlsx, .xls"
-                  onChange={handleFileChange}
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem',
-                    borderRadius: '8px',
-                    background: '#1a1e2e',
-                    border: '1px border #334155',
-                    color: '#fff',
-                    fontSize: '0.875rem'
-                  }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#1a1e2e', border: '1px solid #334155', borderRadius: '8px', padding: '0.45rem 0.75rem' }}>
+                  <label style={{
+                    background: '#e2e8f0',
+                    color: '#0f172a',
+                    padding: '0.45rem 0.9rem',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    userSelect: 'none',
+                    display: 'inline-block'
+                  }}>
+                    Escolher arquivo
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      onChange={handleFileChange}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                  <span style={{ fontSize: '0.875rem', color: file ? '#f1f5f9' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {file ? file.name : 'Nenhum arquivo selecionado'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -551,7 +561,7 @@ export default function ProdutosPage() {
                     marginLeft: 'auto'
                   }}
                 >
-                  {saving ? 'Gravando no Supabase...' : '💾 Salvar no Armazém do Supabase'}
+                  {saving ? 'Gravando no Armazém...' : '💾 Salvar no Armazém do Sistema'}
                 </button>
               </div>
 
@@ -728,11 +738,11 @@ export default function ProdutosPage() {
           {/* Lista de Produtos do Banco de Dados */}
           {loadingDb ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#38bdf8' }}>
-              Carregando produtos do banco Supabase...
+              Carregando produtos do armazém do sistema...
             </div>
           ) : filteredDbProducts.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', background: '#131722', borderRadius: '12px', border: '1px solid #2a2e3d', color: '#94a3b8' }}>
-              {searchTerm ? 'Nenhum produto encontrado para a busca.' : 'Nenhum produto cadastrado no armazém do Supabase para este cliente.'}
+              {searchTerm ? 'Nenhum produto encontrado para a busca.' : 'Nenhum produto cadastrado no armazém do sistema para este cliente.'}
             </div>
           ) : (
             <div style={{ overflowX: 'auto', background: '#131722', borderRadius: '10px', border: '1px solid #2a2e3d' }}>
@@ -979,7 +989,7 @@ export default function ProdutosPage() {
                   disabled={actionLoading}
                   style={{ padding: '0.65rem 1.25rem', borderRadius: '6px', background: '#16a34a', color: '#fff', border: 'none', cursor: actionLoading ? 'wait' : 'pointer', fontWeight: 600 }}
                 >
-                  {actionLoading ? 'Salvando...' : 'Salvar no Supabase'}
+                  {actionLoading ? 'Salvando...' : 'Salvar no Armazém'}
                 </button>
               </div>
             </form>
