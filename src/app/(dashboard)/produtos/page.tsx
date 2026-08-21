@@ -359,7 +359,7 @@ export default function ProdutosPage() {
           </h1>
           <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
             {mainTab === 'ingestao'
-              ? 'Carregue a planilha do cliente para processar as regras do **Prompt 1**, classificar Produtos Únicos vs Variantes e salvar no banco de dados.'
+              ? "Carregue a planilha do cliente para iniciar a gestão de sku's"
               : 'Consulte, adicione, edite ou remova produtos salvos no armazém do sistema.'}
           </p>
         </div>
