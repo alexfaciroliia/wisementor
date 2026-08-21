@@ -125,13 +125,6 @@ export default function AutomationProducts() {
           </p>
         </div>
 
-        {/* Cliente Ativo Badge */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>CLIENTE ATIVO</label>
-          <div style={{ padding: '0.5rem 1rem', background: '#1e293b', border: '1px solid #38bdf8', color: '#38bdf8', borderRadius: '6px', fontWeight: 600, fontSize: '0.9rem' }}>
-            💼 {selectedClient ? selectedClient.name : 'Nenhum selecionado'}
-          </div>
-        </div>
       </header>
 
       {/* Navegação Interna da Automação */}

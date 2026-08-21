@@ -455,27 +455,6 @@ export default function PadronizacaoPage() {
       {/* Card de Configurações e Ingestão */}
       <div className="card" style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-          
-          {/* Cliente Ativo Global */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-              Cliente Ativo (do Menu Lateral):
-            </label>
-            <div style={{
-              padding: '0.75rem 1rem',
-              borderRadius: '8px',
-              background: '#1a1e2e',
-              border: '1px solid #38bdf8',
-              color: '#38bdf8',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}>
-              💼 {selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'}
-            </div>
-          </div>
 
           {/* Seleção do Marketplace */}
           <div>

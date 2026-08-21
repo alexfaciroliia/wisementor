@@ -615,7 +615,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               href="/produtos"
               className={`menu-item ${pathname === '/produtos' ? 'active' : ''}`}
             >
-              📦 Importação da Planilha do Cliente
+              📦 Planilha do Cliente
             </Link>
 
             <Link

@@ -355,12 +355,12 @@ export default function ProdutosPage() {
       <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>
-            {mainTab === 'ingestao' ? '📦 Importação da Planilha do Cliente' : '📦 Produtos do Armazém do Sistema'}
+            {mainTab === 'ingestao' ? '📦 Planilha do Cliente' : '📦 Produtos do Armazém do Sistema'}
           </h1>
           <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
             {mainTab === 'ingestao'
-              ? 'Carregue a planilha bruta do cliente para processar as regras do **Prompt 1**, classificar Produtos Únicos vs Variantes e salvar no banco de dados.'
-              : 'Consulte, adicione, edite ou remova produtos salvos no armazém do sistema para o cliente ativo.'}
+              ? 'Carregue a planilha do cliente para processar as regras do **Prompt 1**, classificar Produtos Únicos vs Variantes e salvar no banco de dados.'
+              : 'Consulte, adicione, edite ou remova produtos salvos no armazém do sistema.'}
           </p>
         </div>
       </div>
@@ -402,7 +402,7 @@ export default function ProdutosPage() {
             boxShadow: mainTab === 'database' ? '0 4px 12px rgba(22, 163, 74, 0.3)' : 'none'
           }}
         >
-          📦 Produtos do Armazém do Sistema ({selectedClient ? selectedClient.name : 'Selecione um Cliente'})
+          📦 Produtos do Armazém do Sistema
         </button>
       </div>
 
@@ -411,31 +411,9 @@ export default function ProdutosPage() {
       {/* ============================================================================================== */}
       {mainTab === 'ingestao' && (
         <>
-          {/* Card de Configuração & Upload */}
+          {/* Card de Upload */}
           <div className="card" style={{ background: '#131722', border: '1px solid #2a2e3d', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', alignItems: 'center' }}>
-              
-              {/* Cliente Ativo Global */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>
-                  Cliente Ativo (Selecionado no Menu Lateral):
-                </label>
-                <div style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '8px',
-                  background: '#1a1e2e',
-                  border: '1px solid #38bdf8',
-                  color: '#38bdf8',
-                  fontWeight: 600,
-                  fontSize: '0.95rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}>
-                  💼 {selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'}
-                </div>
-              </div>
-
+            <div>
               {/* Input do Arquivo */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem' }}>

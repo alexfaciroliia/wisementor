@@ -209,10 +209,10 @@ export default function ArmazemanPage() {
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary, #fff)', marginBottom: '0.5rem' }}>
-          🗄️ Armazém do Sistema ({selectedClient ? selectedClient.name : 'Nenhum cliente selecionado'})
+          🗄️ Armazém do Sistema
         </h1>
         <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.95rem' }}>
-          Consulte, adicione, edite ou remova produtos salvos no armazém do sistema para o cliente ativo selecionado.
+          Consulte, adicione, edite ou remova produtos salvos no armazém do sistema.
         </p>
       </div>
 
