@@ -102,8 +102,8 @@ export function normalizeColorName(colorRaw: string, rowIdx: number, prodName: s
     clean = clean.replace(pattern, rep)
   })
 
-  // Garantir conectivo "e" minúsculo
-  clean = clean.replace(/\b E \b/g, ' e ')
+  // Substituir conectivo "e" ou "E" por "+"
+  clean = clean.replace(/\s+[eE]\s+/g, '+')
 
   if (clean !== orig) {
     errors.push({
@@ -113,7 +113,7 @@ export function normalizeColorName(colorRaw: string, rowIdx: number, prodName: s
       field: 'Cor',
       originalValue: orig,
       correctedValue: clean,
-      message: 'Nome da cor padronizado (masculinizado / ortografia ajustada).',
+      message: 'Nome da cor padronizado (conectivo ajustado para "+" / masculinização ortográfica).',
       generatedFile: 'Produtos Variantes',
       upSellerLineRange: '-'
     })
@@ -314,8 +314,8 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
 
     // Extrair Kit Nativo
     const kitInfo = extractNativeKitInfo(prodTitleRaw)
-    const cleanSupplier = sanitizeText(supplierRaw).toUpperCase()
-    const cleanModel = sanitizeText(modelRaw)
+    const cleanSupplier = sanitizeText(supplierRaw).toUpperCase().replace(/\s+/g, '-')
+    const cleanModel = sanitizeText(modelRaw).replace(/\s+/g, '-')
 
     let spu = ''
     const spuParts = [cleanSupplier, cleanModel].filter(Boolean)
@@ -336,7 +336,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
       spu = spuParts.join('-')
     }
 
-    spu = sanitizeText(spu)
+    spu = sanitizeText(spu).replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
 
     // Expandir tamanhos considerando o segmento
     const expandedSizes = expandSizes(sizeRaw, segmentoRaw, r + 1, prodTitleRaw, errorLogs)
@@ -432,9 +432,13 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
       // Gerar uma variante para cada tamanho expandido
       expandedSizes.forEach(sizeVal => {
         const cleanSize = sanitizeText(sizeVal)
-        // SKU = SPU-Cor-Tamanho (sem hífens sobrando se algum campo estiver vazio)
+        // SKU = SPU-Cor-Tamanho sem espaços (espaços substituídos por hifen '-')
         const skuParts = [spu, cleanColor, cleanSize].filter(Boolean)
-        let sku = skuParts.join('-').replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ')
+        let sku = skuParts.join('-')
+          .replace(/\s*\/\s*/g, '/')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '')
 
         if (!sku) {
           sku = `PROD-LINHA-${r + 1}`
