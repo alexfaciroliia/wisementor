@@ -41,6 +41,57 @@ export default function ProdutosPage() {
   // Visualização de imagem (popup hover e modal click)
   const [hoveredImg, setHoveredImg] = useState<{ url: string; x: number; y: number } | null>(null)
   const [modalImg, setModalImg] = useState<string | null>(null)
+
+  // Modal de correção de erros/links na auditoria
+  const [fixModalError, setFixModalError] = useState<{ errorIndex: number; item: ErrorLogItem } | null>(null)
+  const [fixLinkInput, setFixLinkInput] = useState('')
+
+  function handleOpenFixModal(errorIndex: number, item: ErrorLogItem) {
+    setFixModalError({ errorIndex, item })
+    setFixLinkInput(item.correctedValue || item.originalValue || '')
+  }
+
+  function handleApplyFix() {
+    if (!fixModalError || !parsedData) return
+    const newUrl = fixLinkInput.trim()
+    if (!newUrl) return
+
+    const { errorIndex, item } = fixModalError
+
+    // 1. Atualizar log de erros
+    const updatedLogs = [...parsedData.errorLogs]
+    updatedLogs[errorIndex] = {
+      ...item,
+      type: 'CORRECAO',
+      correctedValue: newUrl,
+      message: `Link de imagem informado manualmente: ${newUrl}`
+    }
+
+    // 2. Atualizar todas as variantes com a linha correspondente
+    const updateVariants = (list: ParsedProductVariant[]) => {
+      return list.map(v => {
+        if (v.clientRow === item.clientRow) {
+          return { ...v, imageUrl: newUrl }
+        }
+        return v
+      })
+    }
+
+    const updatedVariantProducts = updateVariants(parsedData.variantProducts)
+    const updatedUniqueProducts = updateVariants(parsedData.uniqueProducts)
+
+    setParsedData({
+      ...parsedData,
+      variantProducts: updatedVariantProducts,
+      uniqueProducts: updatedUniqueProducts,
+      errorLogs: updatedLogs
+    })
+
+    setFixModalError(null)
+    setFixLinkInput('')
+    setSaveMessage({ type: 'success', text: `Link da imagem corrigido com sucesso para a Linha ${item.clientRow}!` })
+  }
+
   const [formData, setFormData] = useState({
     spu: '',
     sku: '',
@@ -643,7 +694,7 @@ export default function ProdutosPage() {
 
               {/* Tabela de Auditoria / Erros */}
               {activeTab === 'errors' && (
-                <ErrorTable errors={parsedData.errorLogs} />
+                <ErrorTable errors={parsedData.errorLogs} onFixError={handleOpenFixModal} />
               )}
             </>
           )}
@@ -1106,6 +1157,108 @@ export default function ProdutosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal Popup para Corrigir Link da Imagem na Auditoria */}
+      {fixModalError && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 999999,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            background: '#1e293b',
+            border: '1px solid #334155',
+            borderRadius: '12px',
+            padding: '1.75rem',
+            maxWidth: '540px',
+            width: '100%',
+            color: '#fff',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.15rem', color: '#38bdf8' }}>
+              ✏️ Corrigir Link de Imagem - Linha {fixModalError.item.clientRow}
+            </h3>
+
+            <div style={{ background: '#0f172a', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', fontSize: '0.875rem', border: '1px solid #1e293b' }}>
+              <div style={{ color: '#cbd5e1', marginBottom: '0.35rem' }}>
+                <strong>Produto:</strong> {fixModalError.item.productName || 'Não especificado'}
+              </div>
+              <div style={{ color: '#cbd5e1', marginBottom: '0.35rem' }}>
+                <strong>Campo:</strong> <span style={{ color: '#38bdf8', fontWeight: 600 }}>{fixModalError.item.field}</span>
+              </div>
+              <div style={{ color: '#fca5a5', marginTop: '0.5rem', lineHeight: '1.4' }}>
+                ⚠️ <strong>Ocorrência:</strong> {fixModalError.item.message}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#cbd5e1', marginBottom: '0.5rem' }}>
+                Informe a URL da imagem (JPG, JPEG ou PNG):
+              </label>
+              <input
+                type="url"
+                value={fixLinkInput}
+                onChange={(e) => setFixLinkInput(e.target.value)}
+                placeholder="https://exemplo.com/imagem.jpg"
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  background: '#0f172a',
+                  border: '1px solid #3b82f6',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  outline: 'none'
+                }}
+              />
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.35rem', display: 'block' }}>
+                Ao salvar, todas as variações geradas desta linha receberão o link informado.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => setFixModalError(null)}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '8px',
+                  background: '#334155',
+                  color: '#cbd5e1',
+                  border: 'none',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApplyFix}
+                style={{
+                  padding: '0.65rem 1.25rem',
+                  borderRadius: '8px',
+                  background: '#16a34a',
+                  color: '#fff',
+                  border: 'none',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                💾 Salvar Correção
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1186,7 +1339,7 @@ function ProductTable({
   )
 }
 
-function ErrorTable({ errors }: { errors: ErrorLogItem[] }) {
+function ErrorTable({ errors, onFixError }: { errors: ErrorLogItem[]; onFixError?: (idx: number, item: ErrorLogItem) => void }) {
   if (errors.length === 0) {
     return <div style={{ color: '#22c55e', padding: '2rem', textAlign: 'center' }}>Nenhum erro ou inconsistência encontrado.</div>
   }
@@ -1204,6 +1357,7 @@ function ErrorTable({ errors }: { errors: ErrorLogItem[] }) {
             <th style={{ padding: '0.75rem 1rem' }}>Original</th>
             <th style={{ padding: '0.75rem 1rem' }}>Ajustado</th>
             <th style={{ padding: '0.75rem 1rem' }}>Mensagem</th>
+            <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Ação</th>
           </tr>
         </thead>
         <tbody>
@@ -1226,8 +1380,32 @@ function ErrorTable({ errors }: { errors: ErrorLogItem[] }) {
               <td style={{ padding: '0.65rem 1rem', fontWeight: 600 }}>{e.productName}</td>
               <td style={{ padding: '0.65rem 1rem', color: '#38bdf8' }}>{e.field}</td>
               <td style={{ padding: '0.65rem 1rem', color: '#f87171' }}>{e.originalValue || '-'}</td>
-              <td style={{ padding: '0.65rem 1rem', color: '#4ade80' }}>{e.correctedValue || '-'}</td>
+              <td style={{ padding: '0.65rem 1rem', color: '#4ade80', wordBreak: 'break-all', maxWidth: '200px' }}>{e.correctedValue || '-'}</td>
               <td style={{ padding: '0.65rem 1rem', color: '#cbd5e1' }}>{e.message}</td>
+              <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                {onFixError && (
+                  <button
+                    type="button"
+                    onClick={() => onFixError(idx, e)}
+                    style={{
+                      padding: '0.35rem 0.75rem',
+                      borderRadius: '6px',
+                      background: '#0284c7',
+                      color: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    ✏️ Corrigir Link
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
