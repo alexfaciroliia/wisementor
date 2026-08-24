@@ -226,6 +226,8 @@ export async function saveWarehouseProducts(clientId: string, variants: ParsedPr
     size: v.size,
     image_url: v.imageUrl,
     cost_price: v.costPrice || 0,
+    ncm: v.ncm || '',
+    segment: v.segmento || '',
     is_kit_native: v.isKitNative || false,
     updated_at: new Date().toISOString()
   }))

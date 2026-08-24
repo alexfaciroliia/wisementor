@@ -23,6 +23,8 @@ export interface ParsedProductVariant {
   imageUrl: string
   supplier: string
   referenceModel: string
+  ncm: string
+  segmento: string
   clientRow: number
   isKitNative: boolean
 }
@@ -120,22 +122,33 @@ export function normalizeColorName(colorRaw: string, rowIdx: number, prodName: s
   return clean
 }
 
-// 4. Expansão de Tamanhos
-export function expandSizes(sizeRaw: string, rowIdx: number, prodName: string, errors: ErrorLogItem[]): string[] {
+// 4. Expansão de Tamanhos por Segmento e Validação de Tamanho Único
+export function expandSizes(
+  sizeRaw: string,
+  segmentoRaw: string,
+  rowIdx: number,
+  prodName: string,
+  errors: ErrorLogItem[]
+): string[] {
   if (!sizeRaw) return ['']
   const cleanStr = sizeRaw.trim()
 
-  // Regra 6.6: Tamanho Único (não adicionar 'U' como tamanho)
+  // Tamanho Único ("U", "Único", "Unico") -> não gerar variações de tamanho
   if (/^(unico|único|u)$/i.test(cleanStr)) {
     return ['']
   }
 
-  // Regra 6.3: Conectivo "a" (NÃO expandir) e.g. "34 a 40"
-  if (/\b\d+\s+a\s+\d+\b/i.test(cleanStr)) {
-    return [cleanStr]
+  const cleanSeg = sanitizeText(segmentoRaw || '').toUpperCase()
+  let isCalcado = cleanSeg.includes('CALC')
+
+  // Auto-detectar segmento de Calçados se não informado
+  if (!cleanSeg) {
+    if (/^\d+\/\d+\s+ao\s+\d+\/\d+$/i.test(cleanStr)) {
+      isCalcado = true
+    }
   }
 
-  // Regra 6.2: Faixas numéricas em pares unidas por barra "27/28 ao 43/44"
+  // 1. Pares combinados de calçados (ex: "20/21 ao 48/49" ou "19/20 ao 47/48")
   const pairRangeMatch = cleanStr.match(/^(\d+)\/(\d+)\s+ao\s+(\d+)\/(\d+)$/i)
   if (pairRangeMatch) {
     const start1 = parseInt(pairRangeMatch[1], 10)
@@ -148,39 +161,70 @@ export function expandSizes(sizeRaw: string, rowIdx: number, prodName: string, e
     return sizes
   }
 
-  // Regra 6.1: Conectivo "ao" para Letras ("PP ao GG")
-  const letterRangeMatch = cleanStr.match(/^(PP|P|M|G|GG)\s+ao\s+(PP|P|M|G|GG)$/i)
-  if (letterRangeMatch) {
-    const letterOrder = ['PP', 'P', 'M', 'G', 'GG']
-    const startIndex = letterOrder.indexOf(letterRangeMatch[1].toUpperCase())
-    const endIndex = letterOrder.indexOf(letterRangeMatch[2].toUpperCase())
+  // 2. Conectivo "ao" para grades alfanuméricas de vestuário
+  const letterGrades = [
+    ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XGG'],
+    ['XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL'],
+    ['G1', 'G2', 'G3', 'G4', 'G5', 'G6']
+  ]
 
-    if (startIndex !== -1 && endIndex !== -1 && startIndex <= endIndex) {
-      return letterOrder.slice(startIndex, endIndex + 1)
+  const rangeMatch = cleanStr.match(/^([A-Z0-9]+)\s+ao\s+([A-Z0-9]+)$/i)
+  if (rangeMatch) {
+    const startStr = rangeMatch[1].toUpperCase()
+    const endStr = rangeMatch[2].toUpperCase()
+
+    for (const grade of letterGrades) {
+      const startIndex = grade.indexOf(startStr)
+      const endIndex = grade.indexOf(endStr)
+      if (startIndex !== -1 && endIndex !== -1 && startIndex <= endIndex) {
+        return grade.slice(startIndex, endIndex + 1)
+      }
     }
   }
 
-  // Regra 6.1: Conectivo "ao" para Números Simples ("34 ao 40")
+  // 3. Conectivo "ao" para faixas numéricas ("34 ao 50", "20 ao 48", "1 ao 16", "36 ao 42", etc.)
   const numRangeMatch = cleanStr.match(/^(\d+)\s+ao\s+(\d+)$/i)
   if (numRangeMatch) {
     const start = parseInt(numRangeMatch[1], 10)
     const end = parseInt(numRangeMatch[2], 10)
-    const sizes: string[] = []
+
     if (start <= end) {
-      for (let i = start; i <= end; i++) {
+      // Calçados -> Inteiros sequenciais de 1 em 1
+      if (isCalcado) {
+        const sizes: string[] = []
+        for (let i = start; i <= end; i++) {
+          sizes.push(i.toString())
+        }
+        return sizes
+      }
+
+      // Vestuário Infantil -> Régua oficial 1 a 16
+      const infantSequence = ['1', '2', '3', '4', '6', '8', '10', '12', '14', '16']
+      if (start >= 1 && end <= 16 && (start <= 4 || infantSequence.includes(start.toString()))) {
+        const sIdx = infantSequence.indexOf(start.toString())
+        const eIdx = infantSequence.indexOf(end.toString())
+        if (sIdx !== -1 && eIdx !== -1 && sIdx <= eIdx) {
+          return infantSequence.slice(sIdx, eIdx + 1)
+        }
+      }
+
+      // Vestuário Adulto -> Pares de 2 em 2 (quando pares)
+      const sizes: string[] = []
+      const step = (start % 2 === 0 && end % 2 === 0) ? 2 : 1
+      for (let i = start; i <= end; i += step) {
         sizes.push(i.toString())
       }
       return sizes
     }
   }
 
-  // Regra 6.4 e 6.5: Conectivo "e" ou Vírgulas ("PP, M, GG" ou "P e GG")
+  // Conectivo "e" ou Vírgulas ("PP, M, GG" ou "P e GG")
   if (cleanStr.includes(',') || /\s+e\s+/i.test(cleanStr)) {
     const parts = cleanStr.split(/,|\s+e\s+/i).map(s => s.trim()).filter(Boolean)
     if (parts.length > 0) return parts
   }
 
-  // Caso seja um tamanho simples único
+  // Caso seja tamanho único simples
   return [cleanStr]
 }
 
@@ -222,15 +266,18 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
   // Identificar colunas fixas
   const getColIndex = (name: string) => headers.findIndex(h => h.toLowerCase().replace(/[^a-z0-9]/g, '').includes(name.toLowerCase().replace(/[^a-z0-9]/g, '')))
 
-  const colProd = getColIndex('produto') !== -1 ? getColIndex('produto') : 0
-  const colForn = getColIndex('fornecedor') !== -1 ? getColIndex('fornecedor') : 1
-  const colMod = getColIndex('modelo') !== -1 ? getColIndex('modelo') : 2
-  const colTam = getColIndex('tamanho') !== -1 ? getColIndex('tamanho') : 3
-  const colPreco = getColIndex('preco') !== -1 ? getColIndex('preco') : (getColIndex('custo') !== -1 ? getColIndex('custo') : 4)
+  const colSeg = getColIndex('seguimento') !== -1 ? getColIndex('seguimento') : getColIndex('segmento')
+  const colProd = getColIndex('produto') !== -1 ? getColIndex('produto') : (colSeg !== -1 ? 1 : 0)
+  const colForn = getColIndex('fornecedor') !== -1 ? getColIndex('fornecedor') : (colSeg !== -1 ? 2 : 1)
+  const colMod = getColIndex('modelo') !== -1 ? getColIndex('modelo') : (colSeg !== -1 ? 3 : 2)
+  const colTam = getColIndex('tamanho') !== -1 ? getColIndex('tamanho') : (colSeg !== -1 ? 4 : 3)
+  const colPreco = getColIndex('preco') !== -1 ? getColIndex('preco') : (getColIndex('custo') !== -1 ? getColIndex('custo') : (colSeg !== -1 ? 5 : 4))
+  const colNcm = getColIndex('ncm') !== -1 ? getColIndex('ncm') : (colSeg !== -1 ? 6 : -1)
 
   // Mapear colunas de Cor e Imagem
+  const startColorCol = Math.max(5, colNcm !== -1 ? colNcm + 1 : 5)
   const colorImageCols: { colorCol: number; imgCol: number }[] = []
-  for (let c = 5; c < headers.length; c++) {
+  for (let c = startColorCol; c < headers.length; c++) {
     const hName = headers[c].toLowerCase()
     if (hName.includes('cor') && !hName.includes('link') && !hName.includes('imagem')) {
       // Verificar se a próxima coluna é a imagem
@@ -243,7 +290,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
 
   // Se não achou colunas dinâmicas pelo nome, tenta par de colunas consecutivas
   if (colorImageCols.length === 0) {
-    for (let c = 5; c < headers.length; c += 2) {
+    for (let c = startColorCol; c < headers.length; c += 2) {
       colorImageCols.push({ colorCol: c, imgCol: c + 1 })
     }
   }
@@ -255,11 +302,13 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
     const row = rawRows[r]
     if (!row || row.length === 0) continue
 
+    const segmentoRaw = colSeg !== -1 ? String(row[colSeg] || '').trim() : ''
     const prodTitleRaw = String(row[colProd] || '').trim()
     const supplierRaw = String(row[colForn] || '').trim()
     const modelRaw = String(row[colMod] || '').trim()
     const sizeRaw = String(row[colTam] || '').trim()
     const priceRaw = parseFloat(String(row[colPreco] || '0').replace(',', '.')) || 0
+    const ncmRaw = colNcm !== -1 ? String(row[colNcm] || '').trim() : ''
 
     if (!prodTitleRaw && !modelRaw) continue
 
@@ -289,8 +338,8 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
 
     spu = sanitizeText(spu)
 
-    // Expandir tamanhos
-    const expandedSizes = expandSizes(sizeRaw, r + 1, prodTitleRaw, errorLogs)
+    // Expandir tamanhos considerando o segmento
+    const expandedSizes = expandSizes(sizeRaw, segmentoRaw, r + 1, prodTitleRaw, errorLogs)
 
     // Coletar variações de cores presentes na linha
     const foundColorEntries: { colorRaw: string; imgLinkRaw: string }[] = []
@@ -401,6 +450,8 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
           imageUrl: validImgLink,
           supplier: cleanSupplier,
           referenceModel: cleanModel,
+          ncm: ncmRaw,
+          segmento: segmentoRaw,
           clientRow: r + 1,
           isKitNative: kitInfo.isKit
         })

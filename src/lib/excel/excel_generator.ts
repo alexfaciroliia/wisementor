@@ -92,7 +92,7 @@ export function generateWarehouseExcel(
         33,                  // Comprimento (cm)
         22,                  // Largura (cm)
         12,                  // Altura (cm)
-        '',                  // NCM
+        p.ncm || '',         // NCM
         '',                  // CEST
         'UN',                // Unidade
         '0',                 // Origem
@@ -128,7 +128,7 @@ export function generateWarehouseExcel(
         33,                  // Comprimento (cm)
         22,                  // Largura (cm)
         12,                  // Altura (cm)
-        '',                  // NCM
+        p.ncm || '',         // NCM
         '',                  // CEST
         'UN',                // Unidade
         '0',                 // Origem

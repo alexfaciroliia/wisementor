@@ -245,7 +245,7 @@ export async function POST(req: Request) {
           33,                               // M: Comprimento (cm) (numérico)
           22,                               // N: Largura (cm) (numérico)
           12,                               // O: Altura (cm) (numérico)
-          '',                               // P: NCM
+          p.ncm || '',                      // P: NCM
           '',                               // Q: CEST
           'UN',                             // R: Unidade
           '0',                              // S: Origem
@@ -278,7 +278,7 @@ export async function POST(req: Request) {
           33,                               // X: Comprimento (cm) (numérico)
           22,                               // Y: Largura (cm) (numérico)
           12,                               // Z: Altura (cm) (numérico)
-          '',                               // AA: NCM
+          p.ncm || '',                      // AA: NCM
           '',                               // AB: CEST
           'UN',                             // AC: Unidade
           '0',                              // AD: Origem
