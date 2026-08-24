@@ -27,7 +27,17 @@ export default function EsqueciSenhaPage() {
     })
 
     if (authError) {
-      setError('Ocorreu um erro ao solicitar o envio. Verifique o e-mail digitado ou tente novamente em alguns minutos.')
+      console.error('Erro ao resetar senha via Supabase:', authError)
+      let customErr = authError.message || ''
+      const lower = customErr.toLowerCase()
+      if (lower.includes('rate limit') || lower.includes('security purposes') || lower.includes('once every') || lower.includes('over_email_send_rate_limit')) {
+        customErr = 'Por motivos de segurança, aguarde 60 segundos para solicitar um novo código. Se você já solicitou, verifique a caixa de entrada/spam do seu e-mail ou clique no link abaixo para digitar o código.'
+      } else if (lower.includes('user not found') || lower.includes('unable to find user')) {
+        customErr = 'E-mail não encontrado no sistema. Por favor, verifique se digitou o e-mail correto.'
+      } else {
+        customErr = `Erro ao solicitar envio: ${authError.message}`
+      }
+      setError(customErr)
       setLoading(false)
       return
     }
@@ -39,7 +49,7 @@ export default function EsqueciSenhaPage() {
   async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault()
     if (!otpCode.trim() || !email.trim()) {
-      setError('Informe o código de verificação de 6 a 8 dígitos.')
+      setError('Informe o e-mail e o código de verificação de 6 a 8 dígitos.')
       return
     }
 
@@ -54,7 +64,8 @@ export default function EsqueciSenhaPage() {
     })
 
     if (otpError) {
-      setError('Código inválido ou expirado. Verifique os números recebidos ou solicite um novo envio.')
+      console.error('Erro ao verificar OTP:', otpError)
+      setError(`Código inválido ou expirado. Verifique os números recebidos no e-mail (${otpError.message}).`)
       setVerifyingOtp(false)
       return
     }
@@ -104,6 +115,21 @@ export default function EsqueciSenhaPage() {
 
           <form className="auth-form" onSubmit={handleVerifyOtp} noValidate>
             <div className="form-field">
+              <label className="form-label" htmlFor="otp-email-verify">
+                E-mail
+              </label>
+              <input
+                id="otp-email-verify"
+                type="email"
+                className="form-input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="seu@email.com"
+                required
+              />
+            </div>
+
+            <div className="form-field">
               <label className="form-label" htmlFor="otp-code">
                 Código de Verificação (6 a 8 dígitos)
               </label>
@@ -128,7 +154,7 @@ export default function EsqueciSenhaPage() {
               type="submit"
               id="btn-validar-codigo"
               className="btn-primary"
-              disabled={verifyingOtp || !otpCode.trim()}
+              disabled={verifyingOtp || !otpCode.trim() || !email.trim()}
             >
               {verifyingOtp ? (
                 <>
@@ -184,6 +210,16 @@ export default function EsqueciSenhaPage() {
               'Enviar instruções de recuperação'
             )}
           </button>
+
+          <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+            <button
+              type="button"
+              onClick={() => { setError(''); setSuccess(true); }}
+              style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.825rem', cursor: 'pointer', textDecoration: 'none', fontWeight: 500 }}
+            >
+              📩 Já possui um código de verificação? Digitar código
+            </button>
+          </div>
         </form>
       )}
 
