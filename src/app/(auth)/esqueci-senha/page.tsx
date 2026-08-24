@@ -21,29 +21,27 @@ export default function EsqueciSenhaPage() {
     setLoading(true)
     setError('')
 
-    const supabase = createClient()
-    const { error: authError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/auth/confirm?type=recovery`,
-    })
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      })
 
-    if (authError) {
-      console.error('Erro ao resetar senha via Supabase:', authError)
-      let customErr = authError.message || ''
-      const lower = customErr.toLowerCase()
-      if (lower.includes('rate limit') || lower.includes('security purposes') || lower.includes('once every') || lower.includes('over_email_send_rate_limit')) {
-        customErr = 'Por motivos de segurança, aguarde 60 segundos para solicitar um novo código. Se você já solicitou, verifique a caixa de entrada/spam do seu e-mail ou clique no link abaixo para digitar o código.'
-      } else if (lower.includes('user not found') || lower.includes('unable to find user')) {
-        customErr = 'E-mail não encontrado no sistema. Por favor, verifique se digitou o e-mail correto.'
-      } else {
-        customErr = `Erro ao solicitar envio: ${authError.message}`
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        setError(data.error || 'Ocorreu um erro ao solicitar o envio. Verifique o e-mail digitado.')
+        setLoading(false)
+        return
       }
-      setError(customErr)
-      setLoading(false)
-      return
-    }
 
-    setSuccess(true)
-    setLoading(false)
+      setSuccess(true)
+    } catch (err: any) {
+      console.error('Erro ao conectar a API de redefinição:', err)
+      setError(err.message || 'Erro ao conectar ao servidor. Tente novamente em instantes.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleVerifyOtp(e: React.FormEvent) {
