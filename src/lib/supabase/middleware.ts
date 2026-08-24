@@ -28,7 +28,10 @@ export async function updateSession(request: NextRequest) {
   // Rotas públicas (não precisam de autenticação na camada de proxy)
   const publicRoutes = ['/login', '/cadastro', '/esqueci-senha', '/verificar-email', '/auth', '/completar-cadastro']
   const { pathname } = request.nextUrl
-  const isPublic = pathname === '/' || publicRoutes.some((route) => pathname.startsWith(route))
+
+  // Rotas de API gerenciam sua própria autenticação internamente — não bloquear aqui
+  const isApiRoute = pathname.startsWith('/api/')
+  const isPublic = pathname === '/' || isApiRoute || publicRoutes.some((route) => pathname.startsWith(route))
 
   const { data: { user } } = await supabase.auth.getUser()
 
