@@ -67,21 +67,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true)
 
   async function reloadClients() {
-    const { data } = await supabase.from('clients').select('id, name').order('name')
+    const { data } = await supabase.from('clients').select('id, name, status').order('name')
     if (data && data.length > 0) {
-      setClients(data)
+      const activeOnly = data.filter(c => c.status === 'active')
+      const finalClients = activeOnly.length > 0 ? activeOnly : data
+      const mapped = finalClients.map(c => ({ id: c.id, name: c.name }))
+      setClients(mapped)
       const savedId = localStorage.getItem('wisementor_selected_client_id')
-      if (savedId && data.some(c => c.id === savedId)) {
+      if (savedId && mapped.some(c => c.id === savedId)) {
         setSelectedClientIdState(savedId)
-      } else {
-        setSelectedClientIdState(data[0].id)
-        localStorage.setItem('wisementor_selected_client_id', data[0].id)
+      } else if (mapped.length > 0) {
+        setSelectedClientIdState(mapped[0].id)
+        localStorage.setItem('wisementor_selected_client_id', mapped[0].id)
       }
     } else {
       setClients([])
       setSelectedClientIdState('')
     }
   }
+
+  // Inscrição Realtime para sincronizar novos clientes criados/editados automaticamente
+  useEffect(() => {
+    const channel = supabase
+      .channel('clients-realtime-global')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'clients' },
+        () => {
+          reloadClients()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   function handleSelectClientId(id: string) {
     setSelectedClientIdState(id)

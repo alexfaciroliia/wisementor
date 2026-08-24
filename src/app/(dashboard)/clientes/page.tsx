@@ -84,7 +84,7 @@ function validateDocument(doc: string): boolean {
 }
 
 export default function ClientesPage() {
-  const { profile } = useDashboard()
+  const { profile, reloadClients } = useDashboard()
   const supabase = createClient()
   
   // Referência para focar no campo Nome
@@ -372,7 +372,8 @@ export default function ClientesPage() {
       }
 
       setIsModalOpen(false)
-      fetchClients()
+      await fetchClients()
+      await reloadClients()
     } catch (err: any) {
       console.error('Erro ao salvar cliente:', err)
       setErrorMsg(err.message || 'Erro ao processar requisição.')
@@ -392,7 +393,8 @@ export default function ClientesPage() {
 
       if (error) throw error
       setSuccessMsg(`Cliente ${newStatus === 'active' ? 'ativado' : 'desativado'} com sucesso!`)
-      fetchClients()
+      await fetchClients()
+      await reloadClients()
     } catch (err: any) {
       console.error('Erro ao alterar status:', err)
       setErrorMsg('Não foi possível alterar o status.')
@@ -420,7 +422,8 @@ export default function ClientesPage() {
       setSuccessMsg('Cliente excluído permanentemente.')
       setIsConfirmDeleteOpen(false)
       setClientToDelete(null)
-      fetchClients()
+      await fetchClients()
+      await reloadClients()
     } catch (err: any) {
       console.error('Erro ao excluir cliente:', err)
       setErrorMsg(err.message || 'Erro ao tentar excluir cliente.')
