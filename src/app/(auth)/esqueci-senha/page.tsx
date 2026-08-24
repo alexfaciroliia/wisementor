@@ -28,7 +28,17 @@ export default function EsqueciSenhaPage() {
         body: JSON.stringify({ email: email.trim() })
       })
 
-      const data = await res.json()
+      const rawText = await res.text()
+      let data: any = {}
+      try {
+        data = rawText ? JSON.parse(rawText) : {}
+      } catch (parseErr) {
+        console.error('Resposta não-JSON recebida:', rawText)
+        setError('Ocorreu um erro no servidor ao solicitar a recuperação. Tente novamente em instantes.')
+        setLoading(false)
+        return
+      }
+
       if (!res.ok || data.error) {
         setError(data.error || 'Ocorreu um erro ao solicitar o envio. Verifique o e-mail digitado.')
         setLoading(false)
