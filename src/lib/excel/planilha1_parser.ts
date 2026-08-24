@@ -45,10 +45,11 @@ export function removeAccentsAndCedilla(str: string): string {
     .replace(/ç/g, 'c')
 }
 
-// 2. Higienização de strings gerais (remover acentos, espaços extras, Ç)
+// 2. Higienização de strings gerais (remover acentos, substituir ' e '/' E ' por '+', espaços extras, Ç)
 export function sanitizeText(str: string): string {
   if (!str) return ''
   let clean = removeAccentsAndCedilla(str)
+  clean = clean.replace(/\s+[eE]\s+/g, '+')
   clean = clean.replace(/\s+/g, ' ').trim()
   return clean
 }
@@ -443,7 +444,7 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
         allVariants.push({
           spu: spu || `PROD-LINHA-${r + 1}`,
           sku,
-          title: prodTitleRaw || cleanModel || cleanSupplier || `Produto Linha ${r + 1}`,
+          title: sanitizeText(prodTitleRaw) || cleanModel || cleanSupplier || `Produto Linha ${r + 1}`,
           color: cleanColor,
           size: cleanSize,
           costPrice: priceRaw,
