@@ -365,44 +365,62 @@ export default function ProdutosPage() {
         </div>
       </div>
 
-      {/* Navegação por Abas Principais (Ingestão vs Banco do Sistema) */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', borderBottom: '2px solid #2a2e3d', paddingBottom: '0.5rem' }}>
+      {/* Navegação por Abas Principais (Ingestão vs Armazém do Sistema) */}
+      <div
+        style={{
+          display: 'inline-flex',
+          background: '#131722',
+          border: '1px solid #2a2e3d',
+          borderRadius: '12px',
+          padding: '5px',
+          gap: '6px',
+          marginBottom: '2rem'
+        }}
+      >
         <button
+          type="button"
           onClick={() => setMainTab('ingestao')}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.65rem 1.35rem',
             borderRadius: '8px',
-            background: mainTab === 'ingestao' ? '#0284c7' : '#1e293b',
-            color: '#fff',
-            fontWeight: 700,
-            border: 'none',
+            background: mainTab === 'ingestao' ? '#1e293b' : 'transparent',
+            color: mainTab === 'ingestao' ? '#38bdf8' : '#94a3b8',
+            fontWeight: mainTab === 'ingestao' ? 600 : 500,
+            border: mainTab === 'ingestao' ? '1px solid #38bdf8' : '1px solid transparent',
+            boxShadow: mainTab === 'ingestao' ? '0 4px 14px rgba(56, 189, 248, 0.15)' : 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            boxShadow: mainTab === 'ingestao' ? '0 4px 12px rgba(2, 132, 199, 0.3)' : 'none'
+            gap: '0.6rem',
+            fontSize: '0.925rem',
+            transition: 'all 0.2s ease-in-out'
           }}
         >
-          📤 Planilha do Cliente
+          <span style={{ fontSize: '1.1rem' }}>📤</span>
+          <span>Planilha do Cliente</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setMainTab('database')}
           style={{
-            padding: '0.75rem 1.5rem',
+            padding: '0.65rem 1.35rem',
             borderRadius: '8px',
-            background: mainTab === 'database' ? '#16a34a' : '#1e293b',
-            color: '#fff',
-            fontWeight: 700,
-            border: 'none',
+            background: mainTab === 'database' ? '#1e293b' : 'transparent',
+            color: mainTab === 'database' ? '#4ade80' : '#94a3b8',
+            fontWeight: mainTab === 'database' ? 600 : 500,
+            border: mainTab === 'database' ? '1px solid #4ade80' : '1px solid transparent',
+            boxShadow: mainTab === 'database' ? '0 4px 14px rgba(74, 222, 128, 0.15)' : 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            boxShadow: mainTab === 'database' ? '0 4px 12px rgba(22, 163, 74, 0.3)' : 'none'
+            gap: '0.6rem',
+            fontSize: '0.925rem',
+            transition: 'all 0.2s ease-in-out'
           }}
         >
-          📦 Produtos do Armazém do Sistema
+          <span style={{ fontSize: '1.1rem' }}>📦</span>
+          <span>Produtos do Armazém do Sistema</span>
         </button>
       </div>
 
