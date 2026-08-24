@@ -51,8 +51,10 @@ export async function POST(request: Request) {
         }, { status: 400 })
       }
 
-      const otpCode = linkData?.properties?.email_otp
-      const actionLink = linkData?.properties?.action_link
+      // Supabase Admin API retorna na raiz do objeto (não em .properties)
+      const otpCode = (linkData as any)?.email_otp || linkData?.properties?.email_otp
+      const actionLink = (linkData as any)?.action_link || linkData?.properties?.action_link
+      console.log('[reset-password] otpCode:', otpCode, '| actionLink:', !!actionLink)
 
       // Tentar Resend (falha silenciosa)
       const resendApiKey = process.env.RESEND_API_KEY
