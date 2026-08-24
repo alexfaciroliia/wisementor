@@ -40,9 +40,16 @@ export default function EsqueciSenhaPage() {
       }
 
       if (!res.ok || data.error) {
-        setError(data.error || 'Ocorreu um erro ao solicitar o envio. Verifique o e-mail digitado.')
+        // Mostrar o erro real retornado pelo servidor
+        const errMsg = data.error || `Erro ${res.status}: falha ao solicitar recuperação. Tente novamente.`
+        setError(errMsg)
         setLoading(false)
         return
+      }
+
+      // Se o servidor retornou o código OTP (caminho Admin), preencher automaticamente
+      if (data.otpCode) {
+        setOtpCode(String(data.otpCode))
       }
 
       setSuccess(true)
@@ -139,7 +146,7 @@ export default function EsqueciSenhaPage() {
 
             <div className="form-field">
               <label className="form-label" htmlFor="otp-code">
-                Código de Verificação (6 a 8 dígitos)
+                {otpCode ? '✅ Código preenchido automaticamente' : 'Código de Verificação (6 a 8 dígitos)'}
               </label>
               <input
                 id="otp-code"
@@ -151,10 +158,12 @@ export default function EsqueciSenhaPage() {
                 maxLength={10}
                 required
                 autoFocus
-                style={{ textAlign: 'center', fontSize: '1.25rem', letterSpacing: '3px', fontWeight: 700 }}
+                style={{ textAlign: 'center', fontSize: '1.25rem', letterSpacing: '3px', fontWeight: 700, borderColor: otpCode ? '#22c55e' : undefined }}
               />
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem', display: 'block' }}>
-                Digite o código numérico recebido por e-mail ou fornecido pelo administrador.
+              <span style={{ fontSize: '0.75rem', color: otpCode ? '#22c55e' : '#94a3b8', marginTop: '0.25rem', display: 'block' }}>
+                {otpCode
+                  ? 'O código foi gerado e já está preenchido. Clique em validar para continuar.'
+                  : 'Digite o código numérico recebido por e-mail ou fornecido pelo administrador.'}
               </span>
             </div>
 
