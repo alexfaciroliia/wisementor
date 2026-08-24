@@ -102,7 +102,9 @@ export default function EsqueciSenhaPage() {
         <h1 className="auth-title">Esqueceu a senha?</h1>
         <p className="auth-subtitle">
           {success
-            ? 'Enviamos as instruções para o seu e-mail. Você pode clicar no link do e-mail ou digitar o código abaixo.'
+            ? (otpCode
+                ? 'Código de recuperação gerado! Ele já foi preenchido abaixo — clique em validar para criar sua nova senha.'
+                : 'Enviamos as instruções para o seu e-mail. Verifique sua caixa de entrada ou pasta de spam.')
             : 'Digite seu e-mail e enviaremos um link e código para redefinir sua senha.'}
         </p>
       </div>
@@ -118,15 +120,27 @@ export default function EsqueciSenhaPage() {
       {/* Etapa 2: Sucesso no envio + Campo de Código OTP */}
       {success ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="alert alert-success" role="alert">
-            <span>✅</span>
-            <div>
-              <strong>Solicitação realizada!</strong>
-              <div style={{ fontSize: '0.85rem', marginTop: '0.35rem', lineHeight: '1.4' }}>
-                Verifique sua caixa de entrada e a <strong>pasta de Spam / Lixo Eletrônico</strong> do e-mail <strong style={{ color: '#fff' }}>{email}</strong>.
+          {otpCode ? (
+            <div className="alert alert-success" role="alert">
+              <span>🔑</span>
+              <div>
+                <strong>Código gerado com sucesso!</strong>
+                <div style={{ fontSize: '0.85rem', marginTop: '0.35rem', lineHeight: '1.4' }}>
+                  Seu código já está preenchido abaixo. Clique em <strong>Validar</strong> para continuar.
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="alert alert-success" role="alert">
+              <span>✅</span>
+              <div>
+                <strong>Solicitação realizada!</strong>
+                <div style={{ fontSize: '0.85rem', marginTop: '0.35rem', lineHeight: '1.4' }}>
+                  Verifique sua caixa de entrada e a <strong>pasta de Spam / Lixo Eletrônico</strong> do e-mail <strong style={{ color: '#fff' }}>{email}</strong>.
+                </div>
+              </div>
+            </div>
+          )}
 
           <form className="auth-form" onSubmit={handleVerifyOtp} noValidate>
             <div className="form-field">
