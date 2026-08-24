@@ -471,6 +471,14 @@ export function parsePlanilha1(fileBuffer: ArrayBuffer): ParseResultPlanilha1 {
   const variantProducts: ParsedProductVariant[] = []
 
   spuGroups.forEach((variants, spuKey) => {
+    // Padronizar o título de todas as variações do mesmo SPU utilizando o título da primeira ocorrência
+    const primaryTitle = variants.find(v => v.title)?.title
+    if (primaryTitle) {
+      variants.forEach(v => {
+        v.title = primaryTitle
+      })
+    }
+
     // Coletar cores e tamanhos distintos para este SPU
     const distinctColors = new Set(variants.map(v => v.color))
     const distinctSizes = new Set(variants.map(v => v.size))
