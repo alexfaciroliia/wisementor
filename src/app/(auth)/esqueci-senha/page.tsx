@@ -47,11 +47,6 @@ export default function EsqueciSenhaPage() {
         return
       }
 
-      // Se o servidor retornou o código OTP (caminho Admin), preencher automaticamente
-      if (data.otpCode) {
-        setOtpCode(String(data.otpCode))
-      }
-
       setSuccess(true)
     } catch (err: any) {
       console.error('Erro ao conectar a API de redefinição:', err)
@@ -102,10 +97,8 @@ export default function EsqueciSenhaPage() {
         <h1 className="auth-title">Esqueceu a senha?</h1>
         <p className="auth-subtitle">
           {success
-            ? (otpCode
-                ? 'Código de recuperação gerado! Ele já foi preenchido abaixo — clique em validar para criar sua nova senha.'
-                : 'Enviamos as instruções para o seu e-mail. Verifique sua caixa de entrada ou pasta de spam.')
-            : 'Digite seu e-mail e enviaremos um link e código para redefinir sua senha.'}
+            ? 'Enviamos as instruções para o seu e-mail. Verifique sua caixa de entrada ou a pasta de Spam.'
+            : 'Digite seu e-mail e enviaremos um código para redefinir sua senha.'}
         </p>
       </div>
 
@@ -120,27 +113,15 @@ export default function EsqueciSenhaPage() {
       {/* Etapa 2: Sucesso no envio + Campo de Código OTP */}
       {success ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {otpCode ? (
-            <div className="alert alert-success" role="alert">
-              <span>🔑</span>
-              <div>
-                <strong>Código gerado com sucesso!</strong>
-                <div style={{ fontSize: '0.85rem', marginTop: '0.35rem', lineHeight: '1.4' }}>
-                  Seu código já está preenchido abaixo. Clique em <strong>Validar</strong> para continuar.
-                </div>
+          <div className="alert alert-success" role="alert">
+            <span>✅</span>
+            <div>
+              <strong>Instruções enviadas!</strong>
+              <div style={{ fontSize: '0.85rem', marginTop: '0.35rem', lineHeight: '1.4' }}>
+                Verifique a caixa de entrada e a <strong>pasta de Spam</strong> do e-mail <strong style={{ color: '#fff' }}>{email}</strong>.
               </div>
             </div>
-          ) : (
-            <div className="alert alert-success" role="alert">
-              <span>✅</span>
-              <div>
-                <strong>Solicitação realizada!</strong>
-                <div style={{ fontSize: '0.85rem', marginTop: '0.35rem', lineHeight: '1.4' }}>
-                  Verifique sua caixa de entrada e a <strong>pasta de Spam / Lixo Eletrônico</strong> do e-mail <strong style={{ color: '#fff' }}>{email}</strong>.
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
 
           <form className="auth-form" onSubmit={handleVerifyOtp} noValidate>
             <div className="form-field">
@@ -160,7 +141,7 @@ export default function EsqueciSenhaPage() {
 
             <div className="form-field">
               <label className="form-label" htmlFor="otp-code">
-                {otpCode ? '✅ Código preenchido automaticamente' : 'Código de Verificação (6 a 8 dígitos)'}
+                Código de Verificação
               </label>
               <input
                 id="otp-code"
@@ -172,12 +153,10 @@ export default function EsqueciSenhaPage() {
                 maxLength={10}
                 required
                 autoFocus
-                style={{ textAlign: 'center', fontSize: '1.25rem', letterSpacing: '3px', fontWeight: 700, borderColor: otpCode ? '#22c55e' : undefined }}
+                style={{ textAlign: 'center', fontSize: '1.25rem', letterSpacing: '3px', fontWeight: 700 }}
               />
-              <span style={{ fontSize: '0.75rem', color: otpCode ? '#22c55e' : '#94a3b8', marginTop: '0.25rem', display: 'block' }}>
-                {otpCode
-                  ? 'O código foi gerado e já está preenchido. Clique em validar para continuar.'
-                  : 'Digite o código numérico recebido por e-mail ou fornecido pelo administrador.'}
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.25rem', display: 'block' }}>
+                Digite o código numérico recebido no e-mail.
               </span>
             </div>
 
